@@ -1,0 +1,53 @@
+{
+  "name": "bookings-backend",
+  "version": "1.0.0",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "nodemon --env-file=.env --watch src/index.js",
+    "test": "jest",
+    "test-coverage": "jest --coverage",
+    "lint": "eslint .",
+    "lint-fix": "eslint . --fix",
+    "format": "prettier --write **/*.js",
+    "format-check": "prettier --check \"**/*.js\"",
+    "migrate:new": "prisma migrate dev --name",
+    "migrate:up": "prisma migrate dev",
+    "migrate:down": "prisma migrate dev --to-last",
+    "migrate:reset": "prisma migrate reset --skip-seed",
+    "seed": "node prisma/seeders/seed.js"
+  },
+  "prisma": {
+    "seed": "node prisma/seeders/seed.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "devDependencies": {
+    "@babel/preset-env": "^7.25.4",
+    "@eslint/eslintrc": "^3.3.1",
+    "@eslint/js": "^9.30.0",
+    "babel-jest": "^29.7.0",
+    "eslint": "^9.30.0",
+    "eslint-config-prettier": "^10.1.5",
+    "eslint-plugin-jest": "^29.0.1",
+    "eslint-plugin-prettier": "^5.5.1",
+    "jest": "^30.0.3",
+    "jest-environment-node": "^30.0.2",
+    "nodemon": "^3.1.10",
+    "prettier": "3.6.2"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.13.0",
+    "bcrypt": "^6.0.0",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "moment": "^2.30.1",
+    "mysql2": "^3.14.3",
+    "prisma": "^6.13.0",
+    "uuid": "^11.1.0"
+  }
+}
