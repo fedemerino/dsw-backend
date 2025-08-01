@@ -1,0 +1,35 @@
+[
+  {
+    "id": "98b654e7-7019-4fbb-bd89-c05de51bb7ac",
+    "name": "Ciudad Autónoma de Buenos Aires"
+  },
+  { "id": "57128a73-2f2d-49f1-b500-ea1bee744a43", "name": "Neuquén" },
+  { "id": "1b1cdaed-c09e-49ec-8b83-e3facfc3ed71", "name": "San Luis" },
+  { "id": "7d4feb3e-0336-4afa-865c-bf5443d9effd", "name": "Santa Fe" },
+  { "id": "109b7920-6fb8-4d99-a743-c69e45659b9e", "name": "La Rioja" },
+  { "id": "976698cf-22a1-47db-a98a-70dc42f7024a", "name": "Catamarca" },
+  { "id": "cc74662e-3790-4dd4-8748-e1a7c3b77371", "name": "Tucumán" },
+  { "id": "6f2ef0c1-4bbc-4f73-9923-3f40eab1f747", "name": "Chaco" },
+  { "id": "b9067414-7357-4e3b-ab6e-5e50c81ebc10", "name": "Formosa" },
+  { "id": "c905a54a-ddbd-4a59-a96a-af4892b8b794", "name": "Santa Cruz" },
+  { "id": "b54ab35c-4c8c-46ec-a33d-d4ee49768285", "name": "Chubut" },
+  { "id": "f2c9bf23-caa9-4388-bbee-c607807d89c9", "name": "Mendoza" },
+  { "id": "254329cc-6db9-4f39-95c1-e8d8705e5dc4", "name": "Entre Ríos" },
+  { "id": "83105a4f-7f4c-4f79-9827-bc3339c5c3d9", "name": "San Juan" },
+  { "id": "d9c85f24-0b69-43c7-ae80-bd5d9e993131", "name": "Jujuy" },
+  {
+    "id": "e334789d-c411-449f-8a1f-1b0f1aa8db24",
+    "name": "Santiago del Estero"
+  },
+  { "id": "855db5c6-6cb0-4929-9bd5-3aad39bf2bb4", "name": "Río Negro" },
+  { "id": "4caef608-8481-45cb-932b-cc58f4af3d64", "name": "Corrientes" },
+  { "id": "a0520714-c7ad-4973-b129-7bf2d937e811", "name": "Misiones" },
+  { "id": "82d679fe-6c31-4a03-b7bc-159f96f4969e", "name": "Salta" },
+  { "id": "8b5fb36b-1d03-4f18-82c4-dc05dde2f844", "name": "Córdoba" },
+  { "id": "4115ff33-c080-432f-8f52-3f0ef15d37a5", "name": "Buenos Aires" },
+  { "id": "42db5c09-34ff-426c-9523-2ff8f3d6bb3a", "name": "La Pampa" },
+  {
+    "id": "f682b2c7-e09e-45d3-8ad9-0c67663fad0c",
+    "name": "Tierra del Fuego, Antártida e Islas del Atlántico Sur"
+  }
+]

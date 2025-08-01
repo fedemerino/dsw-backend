@@ -1,0 +1,156 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Province {
+  id     String @id @default(uuid())
+  name   String @unique
+  cities City[]
+
+  @@map("provinces")
+}
+
+model City {
+  id         String    @id @default(uuid())
+  name       String
+  provinceId String
+  province   Province  @relation(fields: [provinceId], references: [id])
+  listings   Listing[]
+
+  @@map("cities")
+}
+
+model PaymentMethod {
+  id                    String                 @id @default(uuid())
+  name                  String                 @unique
+  description           String?
+  active                Boolean                @default(true)
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime?              @updatedAt
+  bookings              Booking[]
+  listingPaymentMethods ListingPaymentMethod[]
+
+  @@map("payment_methods")
+}
+
+model User {
+  email         String         @id
+  password      String
+  firstName     String
+  lastName      String
+  avatar        String?
+  active        Boolean        @default(true)
+  isAdmin       Boolean        @default(false)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime?      @updatedAt
+  bookings      Booking[]
+  favorites     Favorite[]
+  reviews       Review[]
+  refreshTokens RefreshToken[]
+
+  @@map("users")
+}
+
+model Listing {
+  id                    String                 @id @default(uuid())
+  title                 String
+  description           String                 @db.Text
+  address               String
+  adultPrice            Float                  @map("adult_price")
+  childPrice            Float                  @map("child_price")
+  maxAmountOfPeople     Int                    @map("max_amount_of_people")
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime?              @updatedAt
+  cityId                String
+  city                  City                   @relation(fields: [cityId], references: [id])
+  images                Image[]
+  listingPaymentMethods ListingPaymentMethod[]
+  bookings              Booking[]
+  favorites             Favorite[]
+  reviews               Review[]
+
+  @@map("listings")
+}
+
+model Booking {
+  id              String        @id @default(uuid())
+  childAmount     Int           @map("child_amount")
+  adultAmount     Int           @map("adult_amount")
+  totalPrice      Float         @map("total_price")
+  status          String
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime?     @updatedAt
+  startDate       DateTime
+  endDate         DateTime
+  paymentMethodId String
+  paymentMethod   PaymentMethod @relation(fields: [paymentMethodId], references: [id])
+  listingId       String        @unique
+  listing         Listing       @relation(fields: [listingId], references: [id])
+  userEmail       String
+  user            User          @relation(fields: [userEmail], references: [email])
+
+  @@map("bookings")
+}
+
+model Image {
+  id        String   @id @default(uuid())
+  url       String
+  createdAt DateTime @default(now())
+  listingId String
+  listing   Listing  @relation(fields: [listingId], references: [id])
+
+  @@map("images")
+}
+
+model Favorite {
+  id        String  @id @default(uuid())
+  userEmail String
+  user      User    @relation(fields: [userEmail], references: [email])
+  listingId String
+  listing   Listing @relation(fields: [listingId], references: [id])
+
+  @@unique([userEmail, listingId])
+  @@map("favorites")
+}
+
+model Review {
+  id        String  @id @default(uuid())
+  rating    Int
+  comment   String  @db.Text
+  listingId String
+  listing   Listing @relation(fields: [listingId], references: [id])
+  userEmail String
+  user      User    @relation(fields: [userEmail], references: [email])
+
+  @@map("reviews")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique @db.VarChar(512)
+  userEmail String
+  user      User     @relation(fields: [userEmail], references: [email], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@map("refresh_tokens")
+}
+
+model ListingPaymentMethod {
+  listingId       String
+  paymentMethodId String
+  createdAt       DateTime      @default(now())
+  listing         Listing       @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  paymentMethod   PaymentMethod @relation(fields: [paymentMethodId], references: [id], onDelete: Cascade)
+
+  @@id([listingId, paymentMethodId])
+  @@map("listing_payment_methods")
+}
