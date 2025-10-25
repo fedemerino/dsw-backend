@@ -6,7 +6,7 @@ generator client {
 }
 
 datasource db {
-  provider = "mysql"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -24,6 +24,8 @@ model City {
   provinceId String
   province   Province  @relation(fields: [provinceId], references: [id])
   listings   Listing[]
+  imageUrl   String?
+  featured   Boolean   @default(false)
 
   @@map("cities")
 }
@@ -38,15 +40,15 @@ model PaymentMethod {
   bookings              Booking[]
   listingPaymentMethods ListingPaymentMethod[]
 
-  @@map("payment_methods")
+  @@map("paymentMethods")
 }
 
 model User {
   email         String         @id
   password      String
-  firstName     String
-  lastName      String
-  avatar        String?
+  fullName      String
+  phoneNumber   String?
+  avatarUrl     String?
   active        Boolean        @default(true)
   isAdmin       Boolean        @default(false)
   createdAt     DateTime       @default(now())
@@ -55,22 +57,34 @@ model User {
   favorites     Favorite[]
   reviews       Review[]
   refreshTokens RefreshToken[]
+  Listing       Listing[]
 
   @@map("users")
 }
 
 model Listing {
-  id                    String                 @id @default(uuid())
-  title                 String
-  description           String                 @db.Text
-  address               String
-  adultPrice            Float                  @map("adult_price")
-  childPrice            Float                  @map("child_price")
-  maxAmountOfPeople     Int                    @map("max_amount_of_people")
-  createdAt             DateTime               @default(now())
-  updatedAt             DateTime?              @updatedAt
-  cityId                String
-  city                  City                   @relation(fields: [cityId], references: [id])
+  id            String    @id @default(uuid())
+  title         String
+  description   String    @db.Text
+  address       String
+  pricePerNight Float
+  propertyType  String
+  rooms         Int
+  bathrooms     Int
+  beds          Int
+  petFriendly   Boolean
+  maxGuests     Int
+  featured      Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime? @updatedAt
+
+  cityId String
+  city   City   @relation(fields: [cityId], references: [id])
+
+  userEmail String
+  user      User   @relation(fields: [userEmail], references: [email])
+
+  amenities             ListingAmenity[]
   images                Image[]
   listingPaymentMethods ListingPaymentMethod[]
   bookings              Booking[]
@@ -80,19 +94,40 @@ model Listing {
   @@map("listings")
 }
 
+model ListingAmenity {
+  listingId String
+  amenityId String
+  listing   Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  amenity   Amenity @relation(fields: [amenityId], references: [id], onDelete: Cascade)
+
+  @@id([listingId, amenityId])
+  @@map("listingAmenities")
+}
+
+model Amenity {
+  id        String           @id @default(uuid())
+  name      String           @unique
+  createdAt DateTime         @default(now())
+  updatedAt DateTime?        @updatedAt
+  listings  ListingAmenity[]
+
+  @@map("amenities")
+}
+
 model Booking {
-  id              String        @id @default(uuid())
-  childAmount     Int           @map("child_amount")
-  adultAmount     Int           @map("adult_amount")
-  totalPrice      Float         @map("total_price")
-  status          String
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime?     @updatedAt
-  startDate       DateTime
-  endDate         DateTime
+  id          String    @id @default(uuid())
+  childAmount Int
+  adultAmount Int
+  totalPrice  Float
+  status      String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime? @updatedAt
+  startDate   DateTime
+  endDate     DateTime
+
   paymentMethodId String
   paymentMethod   PaymentMethod @relation(fields: [paymentMethodId], references: [id])
-  listingId       String        @unique
+  listingId       String
   listing         Listing       @relation(fields: [listingId], references: [id])
   userEmail       String
   user            User          @relation(fields: [userEmail], references: [email])
@@ -130,6 +165,7 @@ model Review {
   userEmail String
   user      User    @relation(fields: [userEmail], references: [email])
 
+  @@unique([userEmail, listingId])
   @@map("reviews")
 }
 
@@ -141,7 +177,7 @@ model RefreshToken {
   expiresAt DateTime
   createdAt DateTime @default(now())
 
-  @@map("refresh_tokens")
+  @@map("refreshTokens")
 }
 
 model ListingPaymentMethod {
@@ -152,5 +188,5 @@ model ListingPaymentMethod {
   paymentMethod   PaymentMethod @relation(fields: [paymentMethodId], references: [id], onDelete: Cascade)
 
   @@id([listingId, paymentMethodId])
-  @@map("listing_payment_methods")
+  @@map("listingPaymentMethods")
 }

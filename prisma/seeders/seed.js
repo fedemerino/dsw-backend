@@ -19,6 +19,11 @@ const paymentMethodsData = JSON.parse(
   fs.readFileSync(path.join(__dirname, './paymentMethods.json'), 'utf8')
 );
 
+const amenitiesData = JSON.parse(
+  fs.readFileSync(path.join(__dirname, './amenities.json'), 'utf8')
+);
+
+// Seed function
 async function main() {
   console.log('🌱 Starting database seeding...');
 
@@ -61,6 +66,7 @@ async function main() {
     const batch = validCities.slice(i, i + batchSize);
 
     const cityCreateData = batch.map((cityData) => ({
+      id: cityData.id || undefined,
       name: cityData.name,
       provinceId: cityData.province,
     }));
@@ -96,6 +102,42 @@ async function main() {
   }
 
   console.log(`✅ Created ${paymentMethodsData.length} payment methods`);
+  console.log('🎉 Database seeding completed successfully!');
+
+  // Finally, seed amenities
+  console.log('🏖️ Seeding amenities...');
+
+  for (const amenityData of amenitiesData) {
+    await prisma.amenity.upsert({
+      where: { name: amenityData.name },
+      update: {},
+      create: {
+        id: amenityData.id,
+        name: amenityData.name,
+      },
+    });
+  }
+
+  const user = {
+    email: 'admin@reservar.com',
+    fullName: 'Admin User',
+    phoneNumber: '1234567890',
+    password: '$2b$12$cadvd.9S9SDz0f9JuHAnc.vbOkOBQJZMlosYpzrol.Dl6PuH4DH2S',
+    isAdmin: true,
+    active: true,
+  };
+  const existingUser = await prisma.user.findUnique({
+    where: { email: user.email },
+  });
+  if (!existingUser) {
+    await prisma.user.create({
+      data: user,
+    });
+    console.log(`✅ Created admin user with email: ${user.email}`);
+  } else {
+    console.log(`ℹ️ Admin user with email ${user.email} already exists`);
+  }
+  console.log(`✅ Created ${amenitiesData.length} amenities`);
   console.log('🎉 Database seeding completed successfully!');
 }
 

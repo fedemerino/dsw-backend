@@ -1,0 +1,21 @@
+[
+    { "id": "9ee5bb7e-78b5-4491-ade5-223d4dccadce", "name": "WiFi" },
+    { "id": "165f8f8e-ce81-4851-b487-636edde6d79f", "name": "Cocina" },
+    { "id": "8a5f5874-9afd-4d21-9df4-93e4bb2d0a95", "name": "Aire acondicionado" },
+    { "id": "8703c30d-027d-4a21-8152-2a4b9f4ae669", "name": "TV" },
+    { "id": "d1bc3b46-90d3-4ecf-96e7-62c37f72fb8e", "name": "Parking" },
+    { "id": "4645e533-b97d-4479-b20b-f96b0d7b9aa5", "name": "Piscina" },
+    { "id": "ba3c9309-b17c-4d2a-b314-228adcd852ef", "name": "Jardín" },
+    { "id": "40ed7355-e7a9-41d5-8126-e41bd195a302", "name": "BBQ" },
+    { "id": "5211225e-636a-4e25-930d-b7a4ab6923e5", "name": "Chimenea" },
+    { "id": "bc7c7a9b-5230-42b5-8a1d-e3ae60d199bc", "name": "Balcón" },
+    { "id": "b6146db4-55a8-4602-9205-d792c90c8629", "name": "Terraza" },
+    { "id": "5a46475e-1cc4-4a37-80b6-d8c38e6dddae", "name": "Jacuzzi" },
+    { "id": "1f05acc7-fa00-4b7d-ae9f-db925abf4fba", "name": "Gimnasio" },
+    { "id": "2b0a2f4d-e1e4-4503-b07e-68836cea558c", "name": "Spa" },
+    { "id": "7fd46863-3a9d-420c-8b6d-9b39b5be9afb", "name": "Lavadora" },
+    { "id": "48599004-fd83-44a2-adde-61d570283a6f", "name": "Calefacción" },
+    { "id": "94c4cacf-d846-4dfe-99e6-6292f242153a", "name": "Vista al mar" },
+    { "id": "fd4d15f5-82d4-4428-939a-3967a6637a38", "name": "Vistas a la montaña" },
+    { "id": "dd05368f-b998-4957-bc9b-9e4aad1eda9b", "name": "Ascensor" }
+]

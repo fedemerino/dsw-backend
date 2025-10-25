@@ -1,5 +1,11 @@
 import jwt from 'jsonwebtoken';
 
+/**
+ * Authenticate a token
+ * @param {Object} req - The request object
+ * @param {Object} res - The response object
+ * @param {Function} next - The next function
+ */
 export const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
@@ -13,7 +19,6 @@ export const authenticateToken = (req, res, next) => {
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    // Verify that it is an access token
     if (decoded.type !== 'access') {
       return res.status(401).json({
         error: 'Invalid token type',
@@ -42,6 +47,13 @@ export const authenticateToken = (req, res, next) => {
   }
 };
 
+/**
+ * Require admin privileges
+ * @param {Object} req - The request object
+ * @param {Object} res - The response object
+ * @param {Function} next - The next function
+ * @returns {Object} a 403 error if the user is not an admin
+ */
 export const requireAdmin = (req, res, next) => {
   if (!req.user.isAdmin) {
     return res.status(403).json({
