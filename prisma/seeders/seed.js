@@ -69,6 +69,7 @@ async function main() {
       id: cityData.id || undefined,
       name: cityData.name,
       provinceId: cityData.province,
+      imageUrl: cityData.imageUrl || null,
     }));
 
     await prisma.city.createMany({

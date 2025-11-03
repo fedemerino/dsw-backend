@@ -142,31 +142,31 @@ VALUES
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
-INSERT INTO reviews (id, rating, comment, "userEmail", "listingId")
+INSERT INTO reviews (id, rating, comment, "userEmail", "listingId", "createdAt")
 VALUES
 -- 🏙️ Apartamento moderno en Recoleta
-(uuid_generate_v4(), 5, 'Excelente ubicación, limpio y moderno. Ideal para escapadas cortas.', 'admin@reservar.com', '223200df-ee5e-4f61-b26e-b74a455d292e'),
+(uuid_generate_v4(), 5, 'Excelente ubicación, limpio y moderno. Ideal para escapadas cortas.', 'admin@reservar.com', '223200df-ee5e-4f61-b26e-b74a455d292e', NOW()),
 
 -- 🌇 Penthouse con vista al río en Puerto Madero
-(uuid_generate_v4(), 5, 'Un lujo total. Las vistas al río son increíbles y el jacuzzi un plus.', 'admin@reservar.com', 'a48c15b7-44d2-4dba-8b8b-e2b5947a9aeb'),
+(uuid_generate_v4(), 5, 'Un lujo total. Las vistas al río son increíbles y el jacuzzi un plus.', 'admin@reservar.com', 'a48c15b7-44d2-4dba-8b8b-e2b5947a9aeb', NOW()),
 
 -- 🏢 Estudio con balcón en Pichincha
-(uuid_generate_v4(), 4, 'Cómodo y bien ubicado. Ideal para una o dos personas.', 'admin@reservar.com', '1ede20e6-fa06-4797-a7e3-15cea1cf2af6'),
+(uuid_generate_v4(), 4, 'Cómodo y bien ubicado. Ideal para una o dos personas.', 'admin@reservar.com', '1ede20e6-fa06-4797-a7e3-15cea1cf2af6', NOW()),
 
 -- 🏡 Casa completa con patio en Echesortu
-(uuid_generate_v4(), 5, 'Casa espaciosa, con parrilla y patio hermoso. Perfecta para familias.', 'admin@reservar.com', 'f9f5f0fb-891b-43cc-b034-40d71adef71f'),
+(uuid_generate_v4(), 5, 'Casa espaciosa, con parrilla y patio hermoso. Perfecta para familias.', 'admin@reservar.com', 'f9f5f0fb-891b-43cc-b034-40d71adef71f', NOW()),
 
 -- 🏢 Loft minimalista en Güemes
-(uuid_generate_v4(), 4, 'Muy moderno y bien decorado. El barrio es excelente.', 'admin@reservar.com', '1a3317c4-ad16-4596-88ae-96fa64d18c6d'),
+(uuid_generate_v4(), 4, 'Muy moderno y bien decorado. El barrio es excelente.', 'admin@reservar.com', '1a3317c4-ad16-4596-88ae-96fa64d18c6d', NOW()),
 
 -- 🌲 Cabaña en las sierras de Córdoba
-(uuid_generate_v4(), 5, 'La mejor experiencia, rodeado de naturaleza. Súper recomendable.', 'admin@reservar.com', 'fc2ad8d4-d24e-4dd1-ac93-2dcabeba42e3'),
+(uuid_generate_v4(), 5, 'La mejor experiencia, rodeado de naturaleza. Súper recomendable.', 'admin@reservar.com', 'fc2ad8d4-d24e-4dd1-ac93-2dcabeba42e3', NOW()),
 
 -- 🍇 Bungalow entre viñedos en Luján de Cuyo
-(uuid_generate_v4(), 5, 'Increíble lugar entre viñedos, paz total y atención de primera.', 'admin@reservar.com', '83d79e1d-0c68-4b0e-960b-f95c7d2142ea'),
+(uuid_generate_v4(), 5, 'Increíble lugar entre viñedos, paz total y atención de primera.', 'admin@reservar.com', '83d79e1d-0c68-4b0e-960b-f95c7d2142ea', NOW()),
 
 -- 🏔️ Suite con vista a la montaña
-(uuid_generate_v4(), 5, 'Un lujo. Despertarse con las montañas enfrente no tiene precio.', 'admin@reservar.com', '5d737958-a1e9-4d60-be21-8f8d55d7e604');
+(uuid_generate_v4(), 5, 'Un lujo. Despertarse con las montañas enfrente no tiene precio.', 'admin@reservar.com', '5d737958-a1e9-4d60-be21-8f8d55d7e604', NOW());
 
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";

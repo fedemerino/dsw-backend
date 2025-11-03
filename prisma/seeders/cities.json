@@ -3218,7 +3218,8 @@
   {
     "id": "d6fea1ee-fea5-4784-867f-dc3f87567357",
     "name": "Córdoba",
-    "province": "8b5fb36b-1d03-4f18-82c4-dc05dde2f844"
+    "province": "8b5fb36b-1d03-4f18-82c4-dc05dde2f844",
+    "imageUrl": "/cordoba.jpg"
   },
   { "name": "Agua de Oro", "province": "8b5fb36b-1d03-4f18-82c4-dc05dde2f844" },
   { "name": "Ascochinga", "province": "8b5fb36b-1d03-4f18-82c4-dc05dde2f844" },
@@ -6122,7 +6123,8 @@
   {
     "id": "e8be00c7-ff00-4102-bf84-da338a4a3633",
     "name": "Mendoza",
-    "province": "f2c9bf23-caa9-4388-bbee-c607807d89c9"
+    "province": "f2c9bf23-caa9-4388-bbee-c607807d89c9",
+    "imageUrl": "/mendoza.jpg"
   },
   { "name": "Bowen", "province": "f2c9bf23-caa9-4388-bbee-c607807d89c9" },
   { "name": "Carmensa", "province": "f2c9bf23-caa9-4388-bbee-c607807d89c9" },
@@ -8665,7 +8667,8 @@
   {
     "id": "c72be13b-a4ac-48f7-b116-d17d77c67545",
     "name": "Rosario",
-    "province": "7d4feb3e-0336-4afa-865c-bf5443d9effd"
+    "province": "7d4feb3e-0336-4afa-865c-bf5443d9effd",
+    "imageUrl": "/rosario.jpg"
   },
   {
     "name": "Villa Gobernador Gálvez",
@@ -9590,7 +9593,8 @@
   {
     "id": "1045aaa7-7317-444a-a877-3dc1d97fcea7",
     "name": "Ciudad de Buenos Aires",
-    "province": "98b654e7-7019-4fbb-bd89-c05de51bb7ac"
+    "province": "98b654e7-7019-4fbb-bd89-c05de51bb7ac",
+    "imageUrl": "/caba.jpg"
   },
   { "name": "Río Grande", "province": "f682b2c7-e09e-45d3-8ad9-0c67663fad0c" },
   { "name": "Ushuaia", "province": "f682b2c7-e09e-45d3-8ad9-0c67663fad0c" },

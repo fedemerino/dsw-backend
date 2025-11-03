@@ -9,9 +9,33 @@ const prisma = new PrismaClient();
  * @returns {Object} The cities
  */
 export const getCities = async (req, res) => {
+  const { search, limit } = req.query;
   try {
-    const cities = await prisma.city.findMany();
-    res.status(200).json(cities);
+    const cities = await prisma.city.findMany({
+      where: {
+        name: {
+          contains: search,
+          mode: 'insensitive',
+        },
+      },
+      include: {
+        province: {
+          select: {
+            name: true,
+          },
+        },
+      },
+      orderBy: {
+        name: 'asc',
+      },
+      take: Math.min(parseInt(limit || '25', 10) || 25, 100),
+    });
+    const formatted = cities.map((city) => ({
+      id: city.id,
+      name: city.name,
+      province: city.province?.name || null,
+    }));
+    res.status(200).json(formatted);
   } catch (error) {
     console.error('Get cities error:', error);
     res.status(500).json({
@@ -19,7 +43,6 @@ export const getCities = async (req, res) => {
     });
   }
 };
-
 /**
  * Gets all cities by province id
  * @param {Object} req - The request object
@@ -34,9 +57,7 @@ export const getCitiesByProvinceId = async (req, res) => {
 
     const where = {
       provinceId,
-      ...(search
-        ? { name: { contains: search, mode: 'insensitive' } }
-        : {}),
+      ...(search ? { name: { contains: search, mode: 'insensitive' } } : {}),
     };
 
     const cities = await prisma.city.findMany({

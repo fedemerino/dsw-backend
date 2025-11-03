@@ -11,8 +11,108 @@ const prisma = new PrismaClient();
  */
 export const getListings = async (req, res) => {
   try {
-    const listings = await prisma.listing.findMany();
-    res.status(200).json(listings);
+    const {
+      propertyType,
+      priceFrom,
+      priceTo,
+      ratingFrom,
+      amenities,
+      limit,
+      search,
+    } = req.query;
+
+    const take = Math.min(parseInt(limit || '20', 10) || 20, 100);
+
+    const where = {};
+
+    if (propertyType && typeof propertyType === 'string') {
+      where.propertyType = { equals: propertyType };
+    }
+
+    const priceFilter = {};
+    if (priceFrom !== undefined && priceFrom !== '') {
+      priceFilter.gte = Number(priceFrom);
+    }
+    if (priceTo !== undefined && priceTo !== '') {
+      priceFilter.lte = Number(priceTo);
+    }
+    if (Object.keys(priceFilter).length > 0) {
+      where.pricePerNight = priceFilter;
+    }
+
+    const amenityIds = amenities ? amenities.split(',') : [];
+
+    if (amenityIds.length > 0) {
+      where.AND = [
+        ...(where.AND || []),
+        ...amenityIds.map((id) => ({ amenities: { some: { amenityId: id } } })),
+      ];
+    }
+
+    const term = typeof search === 'string' ? search.trim() : '';
+    if (term) {
+      where.OR = [
+        { title: { contains: term, mode: 'insensitive' } },
+        { city: { name: { contains: term, mode: 'insensitive' } } },
+      ];
+    }
+    console.log(JSON.stringify(where, null, 2));
+    const listings = await prisma.listing.findMany({
+      where,
+      include: {
+        reviews: { select: { rating: true } },
+        images: {
+          select: { url: true, createdAt: true },
+          orderBy: { createdAt: 'desc' },
+        },
+        city: {
+          select: {
+            name: true,
+            province: { select: { name: true } },
+          },
+        },
+      },
+      take,
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const minRating = Number(ratingFrom);
+
+    const filtered =
+      Number.isFinite(minRating) && minRating > 0
+        ? listings.filter((l) => {
+            const ratings = l.reviews?.map((r) => r.rating) || [];
+            const avg = ratings.length
+              ? ratings.reduce((sum, r) => sum + r, 0) / ratings.length
+              : 0;
+            return avg >= minRating;
+          })
+        : listings;
+
+    const formatted = filtered.map((listing) => {
+      const image = listing.images?.[0]?.url || '/default-listing.jpg';
+      const ratings = listing.reviews?.map((r) => r.rating) || [];
+      const avg = ratings.length
+        ? ratings.reduce((sum, r) => sum + r, 0) / ratings.length
+        : 0;
+      const location = listing.city
+        ? `${listing.city.name}${listing.city.province ? `, ${listing.city.province.name}` : ''}`
+        : 'Unknown';
+      return {
+        id: listing.id,
+        title: listing.title,
+        location,
+        image,
+        price: listing.pricePerNight,
+        rating: Number(avg.toFixed(1)),
+        reviews: ratings.length,
+        beds: listing.beds,
+        baths: listing.bathrooms,
+        propertyType: listing.propertyType,
+      };
+    });
+
+    res.status(200).json(formatted);
   } catch (error) {
     console.error('Error fetching listings:', error);
     res.status(500).json({ message: 'Error fetching listings' });
@@ -28,8 +128,70 @@ export const getListings = async (req, res) => {
 export const getListingById = async (req, res) => {
   try {
     const { id } = req.params;
-    const listing = await prisma.listing.findUnique({ where: { id } });
-    res.status(200).json(listing);
+    const listing = await prisma.listing.findUnique({
+      where: { id },
+      include: {
+        images: true,
+        city: {
+          select: {
+            name: true,
+            province: {
+              select: { name: true },
+            },
+          },
+        },
+        reviews: {
+          select: {
+            rating: true,
+            comment: true,
+            createdAt: true,
+            user: {
+              select: {
+                fullName: true,
+              },
+            },
+          },
+        },
+        amenities: {
+          select: {
+            amenityId: true,
+            amenity: {
+              select: {
+                name: true,
+              },
+            },
+          },
+        },
+        listingPaymentMethods: {
+          select: {
+            paymentMethodId: true,
+            paymentMethod: {
+              select: {
+                name: true,
+              },
+            },
+          },
+        },
+      },
+    });
+    const response = {
+      ...listing,
+      amenities: listing.amenities.map((a) => ({
+        id: a.amenityId,
+        name: a.amenity.name,
+      })),
+      location: `${listing.city.name}, ${listing.city.province.name}`,
+      paymentMethods: listing.listingPaymentMethods.map((p) => ({
+        id: p.paymentMethodId,
+        name: p.paymentMethod.name,
+      })),
+      rating:
+        listing.reviews.length > 0
+          ? listing.reviews.reduce((sum, r) => sum + r.rating, 0) /
+            listing.reviews.length
+          : 0,
+    };
+    res.status(200).json(response);
   } catch (error) {
     console.error('Error fetching listing by id:', error);
     res.status(500).json({ message: 'Error fetching listing by id' });
@@ -181,5 +343,18 @@ export const getFeaturedListings = async (req, res) => {
   } catch (error) {
     console.error('Error fetching featured listings:', error);
     res.status(500).json({ message: 'Error fetching featured listings' });
+  }
+};
+
+export const addToFavorites = async (req, res) => {
+  try {
+    const { userId, listingId } = req.body;
+    const favorite = await prisma.favorite.create({
+      data: { userId, listingId },
+    });
+    res.status(201).json(favorite);
+  } catch (error) {
+    console.error('Error adding to favorites:', error);
+    res.status(500).json({ message: 'Error adding to favorites' });
   }
 };

@@ -164,7 +164,7 @@ model Review {
   listing   Listing @relation(fields: [listingId], references: [id])
   userEmail String
   user      User    @relation(fields: [userEmail], references: [email])
-
+  createdAt DateTime @default(now())
   @@unique([userEmail, listingId])
   @@map("reviews")
 }
