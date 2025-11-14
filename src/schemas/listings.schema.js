@@ -12,8 +12,7 @@ export const listingSchema = z.object({
   petFriendly: z.boolean().optional(),
   maxGuests: z.number().min(0, 'Listing max amount of people is required'),
   cityId: z.string().min(1, 'Listing city is required'),
-  userEmail: z.string().min(1, 'Listing user email is required'),
-  // images: z.array(z.string()).optional(),
+  images: z.array(z.string()).min(2, 'Listing images are required'),
   amenities: z.array(z.string()).min(1, 'Listing amenities are required'),
   listingPaymentMethods: z
     .array(z.string())

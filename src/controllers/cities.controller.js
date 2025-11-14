@@ -81,7 +81,6 @@ export const getCitiesByProvinceId = async (req, res) => {
  * @returns {Object} The cities with listing count
  */
 export const getPopularCities = async (req, res) => {
-  console.log('Fetching popular cities with listing count');
   try {
     const cities = await prisma.city.findMany({
       take: 4,
@@ -95,7 +94,6 @@ export const getPopularCities = async (req, res) => {
         listings: { _count: 'desc' },
       },
     });
-    console.log(cities);
     const formatted = cities.map((city) => ({
       id: city.id,
       name: city.name,

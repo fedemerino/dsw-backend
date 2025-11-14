@@ -1,10 +1,5 @@
 [
   {
-    "name": "Efectivo",
-    "description": "Pago en efectivo",
-    "active": true
-  },
-  {
     "name": "Mercado Pago",
     "description": "Pago con Mercado Pago",
     "active": true

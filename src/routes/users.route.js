@@ -7,5 +7,4 @@ router.get('/', getUsers);
 router.get('/:email', getUserByEmail);
 router.put('/update', updateUser);
 router.delete('/:email', deleteUser);
-
 export default router;

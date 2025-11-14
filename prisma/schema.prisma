@@ -44,20 +44,21 @@ model PaymentMethod {
 }
 
 model User {
-  email         String         @id
-  password      String
-  fullName      String
-  phoneNumber   String?
-  avatarUrl     String?
-  active        Boolean        @default(true)
-  isAdmin       Boolean        @default(false)
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime?      @updatedAt
-  bookings      Booking[]
-  favorites     Favorite[]
-  reviews       Review[]
-  refreshTokens RefreshToken[]
-  Listing       Listing[]
+  email              String              @id
+  password           String
+  fullName           String
+  phoneNumber        String?
+  avatarUrl          String?
+  active             Boolean             @default(true)
+  isAdmin            Boolean             @default(false)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime?           @updatedAt
+  bookings           Booking[]
+  favorites          Favorite[]
+  reviews            Review[]
+  refreshTokens      RefreshToken[]
+  resetPasswordTokens ResetPasswordToken[]
+  Listing            Listing[]
 
   @@map("users")
 }
@@ -116,8 +117,7 @@ model Amenity {
 
 model Booking {
   id          String    @id @default(uuid())
-  childAmount Int
-  adultAmount Int
+  guests Int
   totalPrice  Float
   status      String
   createdAt   DateTime  @default(now())
@@ -189,4 +189,14 @@ model ListingPaymentMethod {
 
   @@id([listingId, paymentMethodId])
   @@map("listingPaymentMethods")
+}
+
+model ResetPasswordToken {
+  token     String   @id
+  email     String
+  user      User     @relation(fields: [email], references: [email], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@map("resetPasswordTokens")
 }

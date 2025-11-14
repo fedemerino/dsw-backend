@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { listingSchema } from '../schemas/listings.schema.js';
+import { formatListing, prepareListingPayload } from '../utils/utils.js';
 
 const prisma = new PrismaClient();
 
@@ -56,7 +57,6 @@ export const getListings = async (req, res) => {
         { city: { name: { contains: term, mode: 'insensitive' } } },
       ];
     }
-    console.log(JSON.stringify(where, null, 2));
     const listings = await prisma.listing.findMany({
       where,
       include: {
@@ -89,28 +89,7 @@ export const getListings = async (req, res) => {
           })
         : listings;
 
-    const formatted = filtered.map((listing) => {
-      const image = listing.images?.[0]?.url || '/default-listing.jpg';
-      const ratings = listing.reviews?.map((r) => r.rating) || [];
-      const avg = ratings.length
-        ? ratings.reduce((sum, r) => sum + r, 0) / ratings.length
-        : 0;
-      const location = listing.city
-        ? `${listing.city.name}${listing.city.province ? `, ${listing.city.province.name}` : ''}`
-        : 'Unknown';
-      return {
-        id: listing.id,
-        title: listing.title,
-        location,
-        image,
-        price: listing.pricePerNight,
-        rating: Number(avg.toFixed(1)),
-        reviews: ratings.length,
-        beds: listing.beds,
-        baths: listing.bathrooms,
-        propertyType: listing.propertyType,
-      };
-    });
+    const formatted = filtered.map((listing) => formatListing(listing));
 
     res.status(200).json(formatted);
   } catch (error) {
@@ -209,79 +188,56 @@ export const getListingsByCityId = async (req, res) => {
   }
 };
 
-export const getListingsByUserId = async (req, res) => {
+export const getUserListings = async (req, res) => {
   try {
-    const { userId } = req.params;
-    const listings = await prisma.listing.findMany({ where: { userId } });
-    res.status(200).json(listings);
+    const { email } = req.user;
+    const listings = await prisma.listing.findMany({
+      where: { userEmail: email },
+      include: {
+        reviews: { select: { rating: true } },
+        images: {
+          select: { url: true, createdAt: true },
+          orderBy: { createdAt: 'desc' },
+        },
+        city: {
+          select: {
+            name: true,
+            province: { select: { name: true } },
+          },
+        },
+      },
+
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const formatted = listings.map((listing) =>
+      formatListing(listing, {
+        includeType: true,
+        includeReviewsArray: true,
+      })
+    );
+    res.status(200).json(formatted);
   } catch (error) {
-    console.error('Error fetching listings by user id:', error);
-    res.status(500).json({ message: 'Error fetching listings by user id' });
+    console.error('Error fetching user listings:', error);
+    res.status(500).json({ message: 'Error fetching user listings' });
   }
 };
 
 export const createListing = async (req, res) => {
   try {
     const { error, data } = listingSchema.safeParse(req.body);
+    const { email } = req.user;
     if (error) {
       return res.status(400).json({ error: error.message });
     }
 
-    const amenitiesConnect = (data.amenities || []).map((amenityId) => ({
-      amenityId,
-    }));
-    const paymentMethodsConnect = (data.listingPaymentMethods || []).map(
-      (paymentMethodId) => ({ paymentMethodId })
-    );
-
-    const payload = {
-      title: data.title,
-      description: data.description,
-      address: data.address,
-      pricePerNight: data.pricePerNight,
-      propertyType: data.propertyType,
-      rooms: data.rooms,
-      bathrooms: data.bathrooms,
-      beds: data.beds,
-      petFriendly: data.petFriendly ?? false,
-      maxGuests: data.maxGuests,
-      cityId: data.cityId,
-      type: data.type,
-      userEmail: data.userEmail,
-      amenities:
-        amenitiesConnect.length > 0
-          ? {
-              create: amenitiesConnect.map((a) => ({
-                amenity: { connect: { id: a.amenityId } },
-              })),
-            }
-          : undefined,
-      listingPaymentMethods:
-        paymentMethodsConnect.length > 0
-          ? {
-              create: paymentMethodsConnect.map((p) => ({
-                paymentMethod: { connect: { id: p.paymentMethodId } },
-              })),
-            }
-          : undefined,
-    };
-
+    const payload = prepareListingPayload(data, email, false);
     const listing = await prisma.listing.create({ data: payload });
 
     res.status(201).json(listing);
   } catch (error) {
     console.error('Error creating listing:', error);
     res.status(500).json({ message: 'Error creating listing' });
-  }
-};
-
-export const getAmenities = async (req, res) => {
-  try {
-    const amenities = await prisma.amenity.findMany();
-    res.status(200).json(amenities);
-  } catch (error) {
-    console.error('Error fetching amenities:', error);
-    res.status(500).json({ message: 'Error fetching amenities' });
   }
 };
 
@@ -315,29 +271,12 @@ export const getFeaturedListings = async (req, res) => {
       orderBy: { createdAt: 'desc' },
     });
 
-    const formatted = listings.map((listing) => {
-      const image = listing.images?.[0]?.url || '/default-listing.jpg';
-      const ratings = listing.reviews?.map((r) => r.rating) || [];
-      const rating = ratings.length
-        ? ratings.reduce((sum, r) => sum + r, 0) / ratings.length
-        : 0;
-      const reviews = ratings.length;
-      const location = listing.city
-        ? `${listing.city.name}${listing.city.province ? `, ${listing.city.province.name}` : ''}`
-        : 'Unknown';
-      return {
-        id: listing.id,
-        title: listing.title,
-        location,
-        image,
-        price: listing.pricePerNight,
-        rating: Number(rating.toFixed(1)),
-        reviews,
-        beds: listing.beds,
-        baths: listing.bathrooms,
-        type: listing.type,
-      };
-    });
+    const formatted = listings.map((listing) =>
+      formatListing(listing, {
+        includeType: true,
+        includePropertyType: false,
+      })
+    );
 
     res.status(200).json(formatted);
   } catch (error) {
@@ -346,15 +285,131 @@ export const getFeaturedListings = async (req, res) => {
   }
 };
 
-export const addToFavorites = async (req, res) => {
+export const toggleFavorite = async (req, res) => {
   try {
-    const { userId, listingId } = req.body;
-    const favorite = await prisma.favorite.create({
-      data: { userId, listingId },
+    const { email: userEmail } = req.user;
+    const { listingId } = req.body;
+
+    // Use the compound unique index for findUnique
+    const favorite = await prisma.favorite.findUnique({
+      where: {
+        userEmail_listingId: {
+          userEmail,
+          listingId,
+        },
+      },
     });
-    res.status(201).json(favorite);
+
+    if (favorite) {
+      await prisma.favorite.delete({
+        where: {
+          userEmail_listingId: {
+            userEmail,
+            listingId,
+          },
+        },
+      });
+      res.status(200).json({ message: 'Favorite removed', isFavorite: false });
+    } else {
+      await prisma.favorite.create({
+        data: { userEmail, listingId },
+      });
+      res.status(200).json({ message: 'Favorite added', isFavorite: true });
+    }
   } catch (error) {
-    console.error('Error adding to favorites:', error);
-    res.status(500).json({ message: 'Error adding to favorites' });
+    console.error('Error toggling favorite:', error);
+    res.status(500).json({ message: 'Error toggling favorite' });
+  }
+};
+
+export const getFavoriteListings = async (req, res) => {
+  try {
+    const { email } = req.user;
+    const favorites = await prisma.favorite.findMany({
+      where: { userEmail: email },
+      include: {
+        listing: {
+          include: {
+            images: {
+              select: { url: true, createdAt: true },
+              take: 1,
+              orderBy: { createdAt: 'desc' },
+            },
+            reviews: { select: { rating: true } },
+            city: {
+              select: {
+                name: true,
+                province: { select: { name: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const formatted = favorites.map((favorite) =>
+      formatListing(favorite.listing)
+    );
+
+    res.status(200).json(formatted);
+  } catch (error) {
+    console.error('Error fetching favorites:', error);
+    res.status(500).json({ message: 'Error fetching favorites' });
+  }
+};
+
+export const getListingBookings = async (req, res) => {
+  const { id } = req.params;
+
+  const bookings = await prisma.booking.findMany({
+    where: {
+      listingId: id,
+      OR: [
+        {
+          status: 'CONFIRMED',
+        },
+        {
+          status: 'PENDING',
+        },
+      ],
+      endDate: {
+        gte: new Date(),
+      },
+    },
+  });
+  res.status(200).json(bookings);
+};
+
+export const updateListing = async (req, res) => {
+  try {
+    const {
+      params: { id },
+      user: { email },
+    } = req;
+    const { error, data } = listingSchema.safeParse(req.body);
+    if (error) {
+      return res.status(400).json({ error: error.message });
+    }
+
+    const listing = await prisma.listing.findUnique({
+      where: { id },
+    });
+    if (!listing) {
+      return res.status(404).json({ error: 'Listing not found' });
+    }
+    if (listing.userEmail !== email) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    const payload = prepareListingPayload(data, email, true);
+    const updatedListing = await prisma.listing.update({
+      where: { id },
+      data: payload,
+    });
+
+    res.status(200).json(updatedListing);
+  } catch (error) {
+    console.error('Error updating listing:', error);
+    res.status(500).json({ message: 'Error updating listing' });
   }
 };

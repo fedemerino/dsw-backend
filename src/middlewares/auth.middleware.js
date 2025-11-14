@@ -25,7 +25,9 @@ export const authenticateToken = (req, res, next) => {
       });
     }
 
-    req.user = decoded;
+    // Remove the 'type' field and JWT metadata (iat, exp) before passing to req.user
+    const { type: _type, iat: _iat, exp: _exp, ...userData } = decoded;
+    req.user = userData;
     next();
   } catch (error) {
     if (error.name === 'TokenExpiredError') {
