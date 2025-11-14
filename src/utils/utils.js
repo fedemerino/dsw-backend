@@ -57,7 +57,7 @@ export const prepareListingPayload = (data, userEmail, isUpdate = false) => {
   const amenitiesConnect = (data.amenities || []).map((amenityId) => ({
     amenityId,
   }));
-  const paymentMethodsConnect = (data.listingPaymentMethods || []).map(
+  const paymentMethodsConnect = (data.paymentMethods || []).map(
     (paymentMethodId) => ({ paymentMethodId })
   );
 

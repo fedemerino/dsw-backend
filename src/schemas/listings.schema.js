@@ -14,7 +14,7 @@ export const listingSchema = z.object({
   cityId: z.string().min(1, 'Listing city is required'),
   images: z.array(z.string()).min(2, 'Listing images are required'),
   amenities: z.array(z.string()).min(1, 'Listing amenities are required'),
-  listingPaymentMethods: z
+  paymentMethods: z
     .array(z.string())
     .min(1, 'Listing payment methods are required'),
 });
