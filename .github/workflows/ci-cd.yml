@@ -1,0 +1,128 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+concurrency:
+  group: ci-cd-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  security:
+    name: Security checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Scans the repo (including git history) for committed secrets, API keys, tokens, etc.
+      # Runs before `npm ci` on purpose, so node_modules doesn't exist yet and isn't scanned.
+      - name: Scan for leaked secrets (TruffleHog)
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          extra_args: --only-verified
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Fails the job on high/critical vulnerabilities in production dependencies.
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+  test:
+    name: Lint, format and test
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: bookings_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/bookings_test?schema=public
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Check formatting
+        run: npm run format-check
+
+      - name: Apply Prisma migrations to the test database
+        run: npx prisma migrate deploy
+
+      - name: Run tests with coverage
+        run: npm run test-coverage
+
+  deploy:
+    name: Deploy to VPS
+    needs: [security, test]
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify VPS secrets are configured
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_APP_PATH: ${{ secrets.VPS_APP_PATH }}
+        run: |
+          missing=""
+          [ -z "$VPS_HOST" ] && missing="$missing VPS_HOST"
+          [ -z "$VPS_USER" ] && missing="$missing VPS_USER"
+          [ -z "$VPS_SSH_KEY" ] && missing="$missing VPS_SSH_KEY"
+          [ -z "$VPS_APP_PATH" ] && missing="$missing VPS_APP_PATH"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing required GitHub secrets for deploy:$missing"
+            echo "Configure them in Settings > Secrets and variables > Actions (see docs/deployment.md, section 6)."
+            exit 1
+          fi
+          echo "All VPS secrets are configured."
+
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -e
+            cd ${{ secrets.VPS_APP_PATH }}
+            git pull origin master
+            npm ci --omit=dev
+            export $(grep -v '^#' .env.prod | xargs)
+            npx prisma migrate deploy
+            pm2 restart reservar-backend

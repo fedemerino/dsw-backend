@@ -1,32 +1,43 @@
-# 🚀 Flujo de trabajo con Git + Jira (paso a paso)
+# Reservar — Backend
 
-1. Ir a la rama `master`:
-   ```
-   git checkout master
-   ```
-2. Asegurarnos de tener los últimos cambios del proyecto
+API REST del backend de **Reservar**, una aplicación de reservas de alojamientos para alquiler temporario (tipo Airbnb): publicar alojamientos, buscar y reservar con pago integrado (MercadoPago), dejar reseñas y gestionar favoritos.
 
-```
-   git pull origin master
-```
+TP de la materia Desarrollo de Software (DSW) — ver [`proposal.md`](./proposal.md) para el alcance funcional completo.
 
-3. Crear una nueva rama con el nombre de la tarjeta de Jira (ejemplo: DSW-14):
+## Stack
 
-```
-   git checkout -b DSW-14
-```
+Node.js + Express 5 · PostgreSQL + Prisma · JWT (access + refresh) con roles (`USER`/`HOST`/`ADMIN`) · Zod · MercadoPago · Cloudinary · Jest + Supertest.
 
-4. Realizar los cambios necesarios en el código y commitear los cambios
+## Quick start
 
-```
-   git add .
-   git commit -m "descripcion de los cambios"
+```bash
+npm install
+docker compose up -d          # levanta Postgres
+npx prisma migrate deploy
+npm run seed
+npm run dev                   # http://localhost:3000
 ```
 
-5. Subir la rama al repositorio
+Instrucciones completas (variables de entorno, requisitos, troubleshooting) en [`docs/instalacion.md`](./docs/instalacion.md).
 
+## Documentación
+
+Toda la documentación del proyecto vive en [`docs/`](./docs/README.md):
+
+- [Instalación](./docs/instalacion.md)
+- [Arquitectura](./docs/arquitectura.md)
+- [API](./docs/api.md)
+- [Testing](./docs/testing.md)
+- [Deployment](./docs/deployment.md)
+- [Flujo de trabajo (git + Jira)](./docs/workflow.md)
+
+## Scripts principales
+
+```bash
+npm run dev             # servidor con recarga automática
+npm test                # tests (unitarios + integración)
+npm run test-coverage   # tests con reporte de cobertura
+npm run lint             # ESLint
 ```
-git push origin DSW-14
-```
- 
-6. Entrar al repositorio en GitHub y crear un Pull Request desde tu rama (ej: DSW-14) a master.
+
+Ver la lista completa en [`docs/instalacion.md`](./docs/instalacion.md#scripts-disponibles).

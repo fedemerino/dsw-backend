@@ -20,6 +20,10 @@ export const getListings = async (req, res) => {
       amenities,
       limit,
       search,
+      cityId,
+      startDate,
+      endDate,
+      guests,
     } = req.query;
 
     const take = Math.min(parseInt(limit || '20', 10) || 20, 100);
@@ -48,6 +52,26 @@ export const getListings = async (req, res) => {
         ...(where.AND || []),
         ...amenityIds.map((id) => ({ amenities: { some: { amenityId: id } } })),
       ];
+    }
+
+    if (cityId) {
+      where.cityId = cityId;
+    }
+
+    if (guests) {
+      where.maxGuests = { gte: parseInt(guests, 10) };
+    }
+
+    if (startDate && endDate) {
+      where.bookings = {
+        none: {
+          AND: [
+            { status: { in: ['CONFIRMED', 'PENDING'] } },
+            { startDate: { lt: new Date(endDate) } },
+            { endDate: { gt: new Date(startDate) } },
+          ],
+        },
+      };
     }
 
     const term = typeof search === 'string' ? search.trim() : '';
@@ -141,16 +165,6 @@ export const getListingById = async (req, res) => {
             },
           },
         },
-        listingPaymentMethods: {
-          select: {
-            paymentMethodId: true,
-            paymentMethod: {
-              select: {
-                name: true,
-              },
-            },
-          },
-        },
       },
     });
     const response = {
@@ -160,10 +174,6 @@ export const getListingById = async (req, res) => {
         name: a.amenity.name,
       })),
       location: `${listing.city.name}, ${listing.city.province.name}`,
-      paymentMethods: listing.listingPaymentMethods.map((p) => ({
-        id: p.paymentMethodId,
-        name: p.paymentMethod.name,
-      })),
       rating:
         listing.reviews.length > 0
           ? listing.reviews.reduce((sum, r) => sum + r.rating, 0) /
@@ -211,10 +221,7 @@ export const getUserListings = async (req, res) => {
     });
 
     const formatted = listings.map((listing) =>
-      formatListing(listing, {
-        includeType: true,
-        includeReviewsArray: true,
-      })
+      formatListing(listing, { includeReviewsArray: true })
     );
     res.status(200).json(formatted);
   } catch (error) {
@@ -272,10 +279,7 @@ export const getFeaturedListings = async (req, res) => {
     });
 
     const formatted = listings.map((listing) =>
-      formatListing(listing, {
-        includeType: true,
-        includePropertyType: false,
-      })
+      formatListing(listing, { includePropertyType: false })
     );
 
     res.status(200).json(formatted);
@@ -378,6 +382,43 @@ export const getListingBookings = async (req, res) => {
     },
   });
   res.status(200).json(bookings);
+};
+
+export const deleteListing = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { email } = req.user;
+
+    const listing = await prisma.listing.findUnique({ where: { id } });
+    if (!listing) {
+      return res.status(404).json({ error: 'Listing not found' });
+    }
+    if (listing.userEmail !== email) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    const activeBooking = await prisma.booking.findFirst({
+      where: {
+        listingId: id,
+        status: { in: ['CONFIRMED', 'PENDING'] },
+        endDate: { gte: new Date() },
+      },
+    });
+    if (activeBooking) {
+      return res
+        .status(400)
+        .json({ error: 'Cannot delete a listing with active bookings' });
+    }
+
+    // Payments cascade from bookings; images/amenities/favorites/reviews cascade from listing
+    await prisma.booking.deleteMany({ where: { listingId: id } });
+    await prisma.listing.delete({ where: { id } });
+
+    res.status(200).json({ message: 'Listing deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting listing:', error);
+    res.status(500).json({ message: 'Error deleting listing' });
+  }
 };
 
 export const updateListing = async (req, res) => {

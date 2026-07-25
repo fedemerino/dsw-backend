@@ -2,17 +2,12 @@
  * Formats a listing object for API response
  * @param {Object} listing - The listing object from Prisma
  * @param {Object} options - Optional configuration
- * @param {boolean} options.includeType - Include the type field
  * @param {boolean} options.includePropertyType - Include the propertyType field
  * @param {boolean} options.includeReviewsArray - Include full reviews array instead of count
  * @returns {Object} Formatted listing object
  */
 export const formatListing = (listing, options = {}) => {
-  const {
-    includeType = false,
-    includePropertyType = true,
-    includeReviewsArray = false,
-  } = options;
+  const { includePropertyType = true, includeReviewsArray = false } = options;
 
   const image = listing.images?.[0]?.url || '/default-listing.jpg';
   const ratings = listing.reviews?.map((r) => r.rating) || [];
@@ -39,10 +34,6 @@ export const formatListing = (listing, options = {}) => {
     formatted.propertyType = listing.propertyType;
   }
 
-  if (includeType && listing.type) {
-    formatted.type = listing.type;
-  }
-
   return formatted;
 };
 
@@ -57,9 +48,6 @@ export const prepareListingPayload = (data, userEmail, isUpdate = false) => {
   const amenitiesConnect = (data.amenities || []).map((amenityId) => ({
     amenityId,
   }));
-  const paymentMethodsConnect = (data.paymentMethods || []).map(
-    (paymentMethodId) => ({ paymentMethodId })
-  );
 
   const imagesConnect = (data.images || []).map((imageUrl) => ({
     url: imageUrl,
@@ -77,7 +65,6 @@ export const prepareListingPayload = (data, userEmail, isUpdate = false) => {
     petFriendly: data.petFriendly ?? false,
     maxGuests: data.maxGuests,
     cityId: data.cityId,
-    type: data.type,
   };
 
   if (!isUpdate) {
@@ -86,11 +73,6 @@ export const prepareListingPayload = (data, userEmail, isUpdate = false) => {
     basePayload.amenities = {
       create: amenitiesConnect.map((a) => ({
         amenity: { connect: { id: a.amenityId } },
-      })),
-    };
-    basePayload.listingPaymentMethods = {
-      create: paymentMethodsConnect.map((p) => ({
-        paymentMethod: { connect: { id: p.paymentMethodId } },
       })),
     };
     basePayload.images = {
@@ -102,12 +84,6 @@ export const prepareListingPayload = (data, userEmail, isUpdate = false) => {
       deleteMany: {}, // Delete all existing amenities
       create: amenitiesConnect.map((a) => ({
         amenity: { connect: { id: a.amenityId } },
-      })),
-    };
-    basePayload.listingPaymentMethods = {
-      deleteMany: {}, // Delete all existing payment methods
-      create: paymentMethodsConnect.map((p) => ({
-        paymentMethod: { connect: { id: p.paymentMethodId } },
       })),
     };
     basePayload.images = {

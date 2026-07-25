@@ -30,35 +30,37 @@ model City {
   @@map("cities")
 }
 
-model PaymentMethod {
-  id                    String                 @id @default(uuid())
-  name                  String                 @unique
-  description           String?
-  active                Boolean                @default(true)
-  createdAt             DateTime               @default(now())
-  updatedAt             DateTime?              @updatedAt
-  bookings              Booking[]
-  listingPaymentMethods ListingPaymentMethod[]
+enum Role {
+  ADMIN
+  HOST
+  USER
+}
 
-  @@map("paymentMethods")
+model UserRole {
+  userEmail String
+  role      Role
+  user      User   @relation(fields: [userEmail], references: [email], onDelete: Cascade)
+
+  @@id([userEmail, role])
+  @@map("user_roles")
 }
 
 model User {
-  email              String              @id
-  password           String
-  fullName           String
-  phoneNumber        String?
-  avatarUrl          String?
-  active             Boolean             @default(true)
-  isAdmin            Boolean             @default(false)
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime?           @updatedAt
-  bookings           Booking[]
-  favorites          Favorite[]
-  reviews            Review[]
-  refreshTokens      RefreshToken[]
+  email               String               @id
+  password            String
+  fullName            String
+  phoneNumber         String?
+  avatarUrl           String?
+  active              Boolean              @default(true)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime?            @updatedAt
+  bookings            Booking[]
+  favorites           Favorite[]
+  reviews             Review[]
+  refreshTokens       RefreshToken[]
   resetPasswordTokens ResetPasswordToken[]
-  Listing            Listing[]
+  listings            Listing[]
+  roles               UserRole[]
 
   @@map("users")
 }
@@ -85,13 +87,14 @@ model Listing {
   userEmail String
   user      User   @relation(fields: [userEmail], references: [email])
 
-  amenities             ListingAmenity[]
-  images                Image[]
-  listingPaymentMethods ListingPaymentMethod[]
-  bookings              Booking[]
-  favorites             Favorite[]
-  reviews               Review[]
+  amenities ListingAmenity[]
+  images    Image[]
+  bookings  Booking[]
+  favorites Favorite[]
+  reviews   Review[]
 
+  @@index([cityId])
+  @@index([pricePerNight])
   @@map("listings")
 }
 
@@ -115,23 +118,54 @@ model Amenity {
   @@map("amenities")
 }
 
+enum PaymentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  REFUNDED
+}
+
+model Payment {
+  id        String        @id @default(uuid())
+  status    PaymentStatus @default(PENDING)
+  amount    Float
+  bookingId String        @unique
+  booking   Booking       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  preferenceId String? @unique
+  paymentId    String? @unique
+  initPoint    String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime? @updatedAt
+
+  @@map("payments")
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+}
+
 model Booking {
-  id          String    @id @default(uuid())
-  guests Int
-  totalPrice  Float
-  status      String
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime? @updatedAt
-  startDate   DateTime
-  endDate     DateTime
+  id         String        @id @default(uuid())
+  guests     Int
+  totalPrice Float
+  status     BookingStatus @default(PENDING)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime?     @updatedAt
+  startDate  DateTime
+  endDate    DateTime
 
-  paymentMethodId String
-  paymentMethod   PaymentMethod @relation(fields: [paymentMethodId], references: [id])
-  listingId       String
-  listing         Listing       @relation(fields: [listingId], references: [id])
-  userEmail       String
-  user            User          @relation(fields: [userEmail], references: [email])
+  listingId String
+  listing   Listing @relation(fields: [listingId], references: [id])
+  userEmail String
+  user      User    @relation(fields: [userEmail], references: [email])
 
+  payment Payment?
+
+  @@index([listingId, startDate, endDate])
   @@map("bookings")
 }
 
@@ -140,7 +174,7 @@ model Image {
   url       String
   createdAt DateTime @default(now())
   listingId String
-  listing   Listing  @relation(fields: [listingId], references: [id])
+  listing   Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
 
   @@map("images")
 }
@@ -148,23 +182,24 @@ model Image {
 model Favorite {
   id        String  @id @default(uuid())
   userEmail String
-  user      User    @relation(fields: [userEmail], references: [email])
+  user      User    @relation(fields: [userEmail], references: [email], onDelete: Cascade)
   listingId String
-  listing   Listing @relation(fields: [listingId], references: [id])
+  listing   Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
 
   @@unique([userEmail, listingId])
   @@map("favorites")
 }
 
 model Review {
-  id        String  @id @default(uuid())
+  id        String   @id @default(uuid())
   rating    Int
-  comment   String  @db.Text
+  comment   String   @db.Text
   listingId String
-  listing   Listing @relation(fields: [listingId], references: [id])
+  listing   Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
   userEmail String
-  user      User    @relation(fields: [userEmail], references: [email])
+  user      User     @relation(fields: [userEmail], references: [email])
   createdAt DateTime @default(now())
+
   @@unique([userEmail, listingId])
   @@map("reviews")
 }
@@ -178,17 +213,6 @@ model RefreshToken {
   createdAt DateTime @default(now())
 
   @@map("refreshTokens")
-}
-
-model ListingPaymentMethod {
-  listingId       String
-  paymentMethodId String
-  createdAt       DateTime      @default(now())
-  listing         Listing       @relation(fields: [listingId], references: [id], onDelete: Cascade)
-  paymentMethod   PaymentMethod @relation(fields: [paymentMethodId], references: [id], onDelete: Cascade)
-
-  @@id([listingId, paymentMethodId])
-  @@map("listingPaymentMethods")
 }
 
 model ResetPasswordToken {

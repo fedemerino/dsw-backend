@@ -9,6 +9,7 @@ import {
   getListingBookings,
   getUserListings,
   updateListing,
+  deleteListing,
 } from '../controllers/listings.controller.js';
 import { authenticateToken } from '../middlewares/auth.middleware.js';
 
@@ -23,5 +24,6 @@ router.get('/myListings', authenticateToken, getUserListings);
 router.get('/:id', getListingById);
 router.get('/bookings/:id', getListingBookings);
 router.put('/:id', authenticateToken, updateListing);
+router.delete('/:id', authenticateToken, deleteListing);
 
 export default router;

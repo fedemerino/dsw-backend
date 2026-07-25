@@ -1,0 +1,32 @@
+# nginx reverse proxy for the Reservar backend (PM2 running on 127.0.0.1:3000).
+#
+# Usage:
+#   sudo cp nginx.conf.example /etc/nginx/sites-available/reservar-backend
+#   # edit server_name with your real domain
+#   sudo ln -s /etc/nginx/sites-available/reservar-backend /etc/nginx/sites-enabled/
+#   sudo nginx -t && sudo systemctl reload nginx
+#   sudo certbot --nginx -d your-backend-domain.com   # adds the HTTPS block automatically
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name your-backend-domain.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Needed so the refresh token's httpOnly cookie round-trips correctly.
+        proxy_set_header Cookie $http_cookie;
+        proxy_pass_header Set-Cookie;
+
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+    }
+}

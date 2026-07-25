@@ -15,9 +15,6 @@ const provincesData = JSON.parse(
 const citiesData = JSON.parse(
   fs.readFileSync(path.join(__dirname, './cities.json'), 'utf8')
 );
-const paymentMethodsData = JSON.parse(
-  fs.readFileSync(path.join(__dirname, './paymentMethods.json'), 'utf8')
-);
 
 const amenitiesData = JSON.parse(
   fs.readFileSync(path.join(__dirname, './amenities.json'), 'utf8')
@@ -84,25 +81,6 @@ async function main() {
 
   console.log(`✅ Created ${validCities.length} cities`);
 
-  // Then seed payment methods
-  console.log('💳 Seeding payment methods...');
-
-  for (const paymentMethodData of paymentMethodsData) {
-    await prisma.paymentMethod.upsert({
-      where: { name: paymentMethodData.name },
-      update: {
-        description: paymentMethodData.description,
-        active: paymentMethodData.active,
-      },
-      create: {
-        name: paymentMethodData.name,
-        description: paymentMethodData.description,
-        active: paymentMethodData.active,
-      },
-    });
-  }
-
-  console.log(`✅ Created ${paymentMethodsData.length} payment methods`);
   console.log('🎉 Database seeding completed successfully!');
 
   // Finally, seed amenities
@@ -124,8 +102,12 @@ async function main() {
     fullName: 'Admin User',
     phoneNumber: '1234567890',
     password: '$2b$12$cadvd.9S9SDz0f9JuHAnc.vbOkOBQJZMlosYpzrol.Dl6PuH4DH2S',
-    isAdmin: true,
     active: true,
+    roles: {
+      create: {
+        role: 'ADMIN',
+      },
+    },
   };
   const existingUser = await prisma.user.findUnique({
     where: { email: user.email },

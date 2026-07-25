@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import moment from 'moment';
@@ -9,6 +10,7 @@ import {
   signUpSchema,
 } from '../schemas/auth.schema.js';
 import { MailService } from '../services/mail.service.js';
+
 const prisma = new PrismaClient();
 
 /**
@@ -17,7 +19,6 @@ const prisma = new PrismaClient();
  * @returns {string} The access token
  */
 const generateAccessToken = (user) => {
-  // Remove password and other sensitive data before encoding in JWT
   const { password: _password, ...userPayload } = user;
 
   return jwt.sign(
@@ -40,6 +41,7 @@ const generateRefreshToken = (user) => {
     {
       email: user.email,
       type: 'refresh',
+      jti: crypto.randomUUID(),
     },
     process.env.JWT_REFRESH_SECRET,
     { expiresIn: '7d' }
@@ -90,16 +92,20 @@ export const signUp = async (req, res) => {
         fullName,
         password: hashedPassword,
         phoneNumber,
-        isAdmin: false,
         active: true,
+        roles: {
+          create: {
+            role: 'USER',
+          },
+        },
       },
       select: {
         email: true,
         fullName: true,
         phoneNumber: true,
-        isAdmin: true,
         active: true,
         createdAt: true,
+        roles: true,
       },
     });
 
@@ -135,18 +141,26 @@ export const login = async (req, res) => {
 
     const user = await prisma.user.findUnique({
       where: { email },
+      select: {
+        email: true,
+        fullName: true,
+        phoneNumber: true,
+        active: true,
+        roles: true,
+        password: true,
+      },
     });
 
     if (!user || !user.active) {
       return res.status(401).json({
-        error: 'Usuario no encontrado o inactivo',
+        error: 'User not found or inactive',
       });
     }
 
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
       return res.status(401).json({
-        error: 'Credenciales inválidas',
+        error: 'Invalid credentials',
       });
     }
 
@@ -173,7 +187,7 @@ export const login = async (req, res) => {
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({
-      error: 'Error interno del servidor',
+      error: 'Internal server error',
     });
   }
 };
@@ -210,8 +224,8 @@ export const refreshToken = async (req, res) => {
         email: true,
         fullName: true,
         phoneNumber: true,
-        isAdmin: true,
         active: true,
+        roles: true,
       },
     });
 
@@ -260,9 +274,9 @@ export const logout = async (req, res) => {
 
     res.clearCookie('refreshToken', {
       httpOnly: true,
-      secure: process.env.ENVIRONMENT === 'production',
+      secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
-      path: '/api/auth/refresh',
+      path: '/api/auth',
     });
 
     res.status(200).json({
@@ -379,7 +393,6 @@ export const resetPassword = async (req, res) => {
       data: { password: hashedPassword },
     });
 
-    // Eliminar el token usado y cualquier otro token del usuario
     await prisma.resetPasswordToken.deleteMany({
       where: { email: user.email },
     });

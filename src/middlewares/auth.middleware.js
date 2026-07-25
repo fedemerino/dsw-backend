@@ -57,7 +57,7 @@ export const authenticateToken = (req, res, next) => {
  * @returns {Object} a 403 error if the user is not an admin
  */
 export const requireAdmin = (req, res, next) => {
-  if (!req.user.isAdmin) {
+  if (!req.user.roles.some((role) => role.role === 'ADMIN')) {
     return res.status(403).json({
       error: 'Access denied. Admin permissions required.',
     });

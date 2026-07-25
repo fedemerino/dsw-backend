@@ -27,7 +27,7 @@ export class CloudinaryService {
   async generateSignedUrl({ folder = 'bookings/images' }) {
     const paramsToSign = {
       timestamp: Math.floor(new Date().getTime() / 1000), // Unix timestamp in seconds
-      folder, // The folder to upload the image to
+      folder,
     };
 
     const signature = this.cloudinary.utils.api_sign_request(

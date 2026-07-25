@@ -10,7 +10,17 @@ const prisma = new PrismaClient();
  */
 export const getUsers = async (req, res) => {
   try {
-    const users = await prisma.user.findMany();
+    const users = await prisma.user.findMany({
+      select: {
+        email: true,
+        fullName: true,
+        phoneNumber: true,
+        avatarUrl: true,
+        active: true,
+        createdAt: true,
+        roles: true,
+      },
+    });
     res.status(200).json(users);
   } catch (error) {
     console.error('Get users error:', error);
@@ -29,6 +39,12 @@ export const getUsers = async (req, res) => {
 export const updateUser = async (req, res) => {
   try {
     const { email, fullName, phoneNumber, avatarUrl } = req.body;
+
+    const isAdmin = req.user.roles?.some((r) => r.role === 'ADMIN');
+    if (req.user.email !== email && !isAdmin) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
     const user = await prisma.user.findUnique({
       where: { email },
     });
@@ -42,6 +58,14 @@ export const updateUser = async (req, res) => {
     const updatedUser = await prisma.user.update({
       where: { email },
       data: { fullName, phoneNumber, avatarUrl },
+      select: {
+        email: true,
+        fullName: true,
+        phoneNumber: true,
+        avatarUrl: true,
+        active: true,
+        roles: true,
+      },
     });
 
     res.status(200).json({
@@ -67,6 +91,15 @@ export const getUserByEmail = async (req, res) => {
     const { email } = req.params;
     const user = await prisma.user.findUnique({
       where: { email },
+      select: {
+        email: true,
+        fullName: true,
+        phoneNumber: true,
+        avatarUrl: true,
+        active: true,
+        createdAt: true,
+        roles: true,
+      },
     });
 
     if (!user) {
@@ -75,9 +108,7 @@ export const getUserByEmail = async (req, res) => {
       });
     }
 
-    res.status(200).json({
-      user,
-    });
+    res.status(200).json({ user });
   } catch (error) {
     console.error('Get user by email error:', error);
     res.status(500).json({

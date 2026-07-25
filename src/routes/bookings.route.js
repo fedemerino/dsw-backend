@@ -4,15 +4,18 @@ import {
   getUserBookingsCount,
   getUserBookings,
   cancelBooking,
+  getHostBookings,
 } from '../controllers/bookings.controller.js';
 import { authenticateToken } from '../middlewares/auth.middleware.js';
 
 const router = Router();
 
+// Get all bookings received for the authenticated host's listings
+router.get('/host', authenticateToken, getHostBookings);
 // Get bookings count for a user
-router.get('/user/:userEmail/count', getUserBookingsCount);
+router.get('/user/:userEmail/count', authenticateToken, getUserBookingsCount);
 // Get all bookings for a user with full details
-router.get('/user/:userEmail', getUserBookings);
+router.get('/user/:userEmail', authenticateToken, getUserBookings);
 // Create a new booking
 router.post('/', authenticateToken, createBooking);
 // Cancel a booking

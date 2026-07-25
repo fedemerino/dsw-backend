@@ -11,5 +11,4 @@ router.get('/', getCities);
 router.get('/popular', getPopularCities);
 router.get('/province/:provinceId', getCitiesByProvinceId);
 
-
 export default router;

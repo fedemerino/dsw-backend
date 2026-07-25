@@ -5,6 +5,9 @@ import globals from 'globals';
 
 export default defineConfig([
   {
+    ignores: ['coverage/**', 'dist/**', 'node_modules/**'],
+  },
+  {
     files: ['**/*.{js,mjs,cjs}'],
     plugins: { js, jest },
     extends: ['js/recommended'],

@@ -1,6 +1,8 @@
 import { PrismaClient } from '@prisma/client';
+import { MercadoPagoService } from '../services/mercadopago.service.js';
 
 const prisma = new PrismaClient();
+const mercadoPagoService = new MercadoPagoService();
 
 /**
  * Gets the number of total and upcoming bookings for a user
@@ -11,6 +13,10 @@ const prisma = new PrismaClient();
 export const getUserBookingsCount = async (req, res) => {
   try {
     const { userEmail } = req.params;
+    const isAdmin = req.user.roles?.some((r) => r.role === 'ADMIN');
+    if (req.user.email !== userEmail && !isAdmin) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
     const totalBookings = await prisma.booking.count({ where: { userEmail } });
     const upcomingBookings = await prisma.booking.count({
       where: { userEmail, startDate: { gt: new Date() } },
@@ -31,6 +37,10 @@ export const getUserBookingsCount = async (req, res) => {
 export const getUserBookings = async (req, res) => {
   try {
     const { userEmail } = req.params;
+    const isAdmin = req.user.roles?.some((r) => r.role === 'ADMIN');
+    if (req.user.email !== userEmail && !isAdmin) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
 
     const bookings = await prisma.booking.findMany({
       where: {
@@ -45,11 +55,11 @@ export const getUserBookings = async (req, res) => {
               },
             },
             images: {
-              take: 1, // Solo la primera imagen para optimizar
+              take: 1,
             },
           },
         },
-        paymentMethod: true,
+        payment: true,
       },
       orderBy: {
         createdAt: 'desc',
@@ -63,12 +73,13 @@ export const getUserBookings = async (req, res) => {
         guests: booking.guests,
         id: booking.id,
         listing: booking.listing,
-        paymentMethod: booking.paymentMethod,
+        payment: booking.payment,
         status: booking.status,
         totalPrice: booking.totalPrice,
         updatedAt: booking.updatedAt,
         userEmail: booking.userEmail,
-        location: booking.listing.city.name + ', ' + booking.listing.city.province.name,
+        location:
+          booking.listing.city.name + ', ' + booking.listing.city.province.name,
         image: booking.listing.images[0]?.url,
       };
     });
@@ -90,7 +101,6 @@ export const cancelBooking = async (req, res) => {
     const { bookingId } = req.params;
     const { email } = req.user; // Usuario autenticado
 
-    // Find the booking
     const booking = await prisma.booking.findUnique({
       where: {
         id: bookingId,
@@ -138,7 +148,7 @@ export const cancelBooking = async (req, res) => {
             },
           },
         },
-        paymentMethod: true,
+        payment: true,
       },
     });
 
@@ -152,83 +162,172 @@ export const cancelBooking = async (req, res) => {
   }
 };
 
-export const createBooking = async (req, res) => {
-  console.log(req.body);
-  const { listingId, startDate, endDate, guests } = req.body;
-  // for now we only have Mercado Pago as a payment method
-  const paymentMethod = await prisma.paymentMethod.findFirst({
-    where: {
-      name: 'Mercado Pago',
-    },
-  });
-  if (!paymentMethod) {
-    return res.status(400).json({ message: 'Payment method not found' });
+export const getHostBookings = async (req, res) => {
+  try {
+    const { email } = req.user;
+    const bookings = await prisma.booking.findMany({
+      where: {
+        listing: { userEmail: email },
+      },
+      include: {
+        listing: {
+          include: {
+            images: { take: 1 },
+            city: { include: { province: true } },
+          },
+        },
+        user: {
+          select: {
+            email: true,
+            fullName: true,
+            avatarUrl: true,
+            phoneNumber: true,
+          },
+        },
+        payment: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    res.status(200).json(bookings);
+  } catch (error) {
+    console.error('Get host bookings error:', error);
+    res.status(500).json({ message: 'Internal server error' });
   }
-  const { email } = req.user;
+};
 
-  // verify if the listing is available for the given dates
-  // Convert dates to Date objects if they're strings
-  const requestedStartDate = new Date(startDate);
-  const requestedEndDate = new Date(endDate);
+export const createBooking = async (req, res) => {
+  try {
+    const { listingId, startDate, endDate, guests } = req.body;
+    const { email } = req.user;
 
-  // Validate date range
-  if (requestedStartDate >= requestedEndDate) {
-    return res.status(400).json({
-      message: 'End date must be after start date',
+    // verify if the listing is available for the given dates
+    const requestedStartDate = new Date(startDate);
+    const requestedEndDate = new Date(endDate);
+
+    if (requestedStartDate >= requestedEndDate) {
+      return res.status(400).json({
+        message: 'End date must be after start date',
+      });
+    }
+
+    const conflictingBookings = await prisma.booking.findMany({
+      where: {
+        listingId: listingId,
+        AND: [
+          {
+            OR: [{ status: 'CONFIRMED' }, { status: 'PENDING' }],
+          },
+          {
+            startDate: { lt: requestedEndDate },
+            endDate: { gt: requestedStartDate },
+          },
+        ],
+      },
+    });
+
+    if (conflictingBookings.length > 0) {
+      return res
+        .status(400)
+        .json({ message: 'Listing not available for the given dates' });
+    }
+
+    const [listing, user] = await Promise.all([
+      prisma.listing.findFirst({ where: { id: listingId } }),
+      prisma.user.findUnique({ where: { email }, select: { fullName: true } }),
+    ]);
+    if (!listing) {
+      return res.status(400).json({ message: 'Listing not found' });
+    }
+
+    const durationInDays = Math.ceil(
+      (requestedEndDate - requestedStartDate) / (1000 * 60 * 60 * 24)
+    );
+    const totalPrice =
+      Math.round(listing.pricePerNight * durationInDays * 1.1 * 100) / 100;
+
+    const booking = await prisma.booking.create({
+      data: {
+        listing: { connect: { id: listingId } },
+        startDate: requestedStartDate,
+        endDate: requestedEndDate,
+        guests: guests || 1,
+        totalPrice,
+        payment: { create: { amount: totalPrice } },
+        user: { connect: { email: email } },
+        status: 'PENDING',
+      },
+      include: { payment: true, listing: true },
+    });
+
+    let initPoint = null;
+    let preferenceId = null;
+
+    try {
+      const nameParts = (user?.fullName ?? '').trim().split(' ');
+      const payerFirstName = nameParts[0] ?? '';
+      const payerLastName =
+        nameParts.length > 1 ? nameParts.slice(1).join(' ') : payerFirstName;
+
+      const preference = await mercadoPagoService.createPreference({
+        items: [
+          {
+            title: listing.title,
+            description: listing.description.slice(0, 255),
+            quantity: 1,
+            unit_price: totalPrice,
+          },
+        ],
+        paymentId: booking.payment.id,
+        payerEmail: email,
+        payerFirstName,
+        payerLastName,
+      });
+
+      preferenceId = preference?.id ?? preference?.body?.id ?? null;
+      initPoint =
+        preference?.init_point ?? preference?.body?.init_point ?? null;
+
+      if (preferenceId || initPoint) {
+        await prisma.payment.update({
+          where: { id: booking.payment.id },
+          data: {
+            ...(preferenceId && { preferenceId }),
+            ...(initPoint && { initPoint }),
+          },
+        });
+      }
+    } catch (mpError) {
+      console.error(
+        'MercadoPago createPreference failed:',
+        mpError?.message ?? mpError
+      );
+      if (mpError?.cause) console.error('MercadoPago cause:', mpError.cause);
+      if (mpError?.body) console.error('MercadoPago body:', mpError.body);
+      return res.status(502).json({
+        message:
+          'Booking created but payment link could not be generated. Please try again or contact support.',
+        booking,
+        initPoint: null,
+        preferenceId: null,
+        error:
+          process.env.NODE_ENV === 'development'
+            ? (mpError?.message ?? String(mpError))
+            : undefined,
+      });
+    }
+
+    return res.status(201).json({
+      booking,
+      initPoint,
+      preferenceId,
+    });
+  } catch (error) {
+    console.error('createBooking error:', error?.message ?? error);
+    return res.status(500).json({
+      message: 'Failed to create booking',
+      ...(process.env.NODE_ENV === 'development' && {
+        error: error?.message ?? String(error),
+      }),
     });
   }
-
-  // Check for overlapping bookings
-  // Two date ranges overlap if: existing.startDate < requested.endDate AND existing.endDate > requested.startDate
-  const conflictingBookings = await prisma.booking.findMany({
-    where: {
-      listingId: listingId,
-      AND: [
-        {
-          OR: [{ status: 'CONFIRMED' }, { status: 'PENDING' }],
-        },
-        {
-          // Check if dates overlap
-          startDate: { lt: requestedEndDate },
-          endDate: { gt: requestedStartDate },
-        },
-      ],
-    },
-  });
-
-  if (conflictingBookings.length > 0) {
-    return res
-      .status(400)
-      .json({ message: 'Listing not available for the given dates' });
-  }
-  const listing = await prisma.listing.findFirst({
-    where: {
-      id: listingId,
-    },
-  });
-  if (!listing) {
-    return res.status(400).json({ message: 'Listing not found' });
-  }
-  // create the booking
-  const durationInDays = Math.ceil(
-    (requestedEndDate - requestedStartDate) / (1000 * 60 * 60 * 24)
-  );
-  const totalPrice = listing.pricePerNight * durationInDays * 1.1;
-  console.log(durationInDays);
-  console.log(totalPrice);
-  const booking = await prisma.booking.create({
-    data: {
-      listing: {
-        connect: { id: listingId },
-      },
-      startDate,
-      endDate,
-      guests: guests || 1,
-      totalPrice,
-      paymentMethod: { connect: { id: paymentMethod.id } },
-      user: { connect: { email: email } },
-      status: 'CONFIRMED',
-    },
-  });
-  res.status(201).json(booking);
 };
