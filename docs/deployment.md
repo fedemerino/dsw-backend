@@ -42,13 +42,13 @@ Verificar desde tu máquina local (debería entrar sin pedir password):
 ssh -i ~/.ssh/dsw_backend_deploy deploy@<IP-de-la-VPS>
 ```
 
-Instalar Node.js 20+ y [PM2](https://pm2.keymetrics.io/) **para el usuario `deploy`**, vía `nvm`, así no hace falta sudo para `npm install -g`:
+Instalar Node.js 24 (misma versión mayor que se usa en desarrollo y en el CI, ver `.github/workflows/ci-cd.yml`) y [PM2](https://pm2.keymetrics.io/) **para el usuario `deploy`**, vía `nvm`, así no hace falta sudo para `npm install -g`:
 
 ```bash
 su - deploy
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
 source ~/.bashrc
-nvm install 20
+nvm install 24
 npm install -g pm2
 ```
 
