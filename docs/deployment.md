@@ -54,6 +54,10 @@ npm install -g pm2
 
 > No agregues `deploy` al grupo `sudo` ni al grupo `docker` (estar en el grupo `docker` equivale en la práctica a acceso root sobre el host). Las únicas dos cosas que requieren sudo — `pm2 startup` (para que arranque en el boot) y la configuración de nginx — las corrés vos una sola vez con tu propio usuario admin, no forman parte de lo que hace `deploy` en cada deploy.
 
+> **Nota sobre `nvm` + SSH no interactivo:** `nvm` solo se agrega al `PATH` en shells interactivos (vía `~/.bashrc`, que en Ubuntu corta la ejecución apenas detecta que el shell no es interactivo). El script de deploy en `.github/workflows/ci-cd.yml` corre por SSH de forma no interactiva, así que no encuentra `node`/`npm`/`pm2` a menos que cargue `nvm` explícitamente al principio del script (`export NVM_DIR=... && . "$NVM_DIR/nvm.sh" && nvm use default`) — ya está resuelto en el workflow, pero si alguna vez corrés comandos manuales por SSH no interactivo (ej. `ssh deploy@host "npm run algo"`), vas a necesitar el mismo truco.
+
+> Si además `git pull` te tira `detected dubious ownership in repository at '...'`, es la protección de Git (post CVE-2022-24765) que exige que el usuario que corre `git` sea el dueño del directorio. Solucionalo una vez, como el usuario `deploy`: `git config --global --add safe.directory /home/apps/dsw-backend`.
+
 ## 1. Base de datos (Docker)
 
 El repo ya trae `docker-compose.yml` con Postgres 15. Con tu usuario admin (no hace falta que sea `deploy`):
