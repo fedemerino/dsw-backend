@@ -92,6 +92,7 @@ jobs:
     needs: [security, test]
     if: github.ref == 'refs/heads/master' && github.event_name == 'push'
     runs-on: ubuntu-latest
+    environment: prod
     steps:
       - name: Verify VPS secrets are configured
         env:

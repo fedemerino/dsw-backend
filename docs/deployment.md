@@ -158,7 +158,9 @@ El repo incluye `.github/workflows/ci-cd.yml`, que corre en cada push/PR a `mast
 2. **`test`** — levanta un contenedor de Postgres 15 como *service* de GitHub Actions, corre `npm run lint`, `npm run format-check`, aplica las migraciones de Prisma contra esa base efímera y corre `npm run test-coverage` (los 185 tests, con el `coverageThreshold` de `jest.config.js` como gate).
 3. **`deploy`** — solo si `security` y `test` pasaron y el push fue a `master`: primero valida que los 4 secrets de VPS estén configurados (si falta alguno, corta el job con `::error::` antes de intentar conectarse — ver más abajo), después se conecta por SSH a la VPS (usando [appleboy/ssh-action](https://github.com/appleboy/ssh-action)) y corre `git pull` + `npm ci --omit=dev` + `prisma migrate deploy` + `pm2 restart reservar-backend`.
 
-### Secrets a configurar en GitHub (`Settings → Secrets and variables → Actions`)
+### Secrets a configurar en GitHub
+
+El job `deploy` corre contra el **Environment** `prod` (`environment: prod` en el YAML), así que los secrets van en `Settings → Environments → prod → Environment secrets` — no en los repository secrets. Si los configurás como repository secrets en vez de en el Environment `prod` (o le cambiás el nombre al Environment sin actualizar el YAML), el job los va a ver vacíos aunque existan, porque GitHub Actions solo expone los secrets de un Environment a los jobs que declaran ese mismo `environment:`.
 
 | Secret | Valor |
 |---|---|
@@ -167,6 +169,6 @@ El repo incluye `.github/workflows/ci-cd.yml`, que corre en cada push/PR a `mast
 | `VPS_SSH_KEY` | Clave privada SSH (par de claves dedicado para el deploy, no tu clave personal) |
 | `VPS_APP_PATH` | `/home/apps/dsw-backend` |
 
-Si falta alguno de estos 4 secrets, el job `deploy` falla explícitamente en el paso "Verify VPS secrets are configured" con un mensaje indicando cuáles faltan, en vez de fallar más adelante con un error críptico de conexión SSH (`appleboy/ssh-action` con `host`/`key` vacíos da un error poco claro).
+Si falta alguno de estos 4 secrets (o el job no tiene acceso al Environment donde están), el job `deploy` falla explícitamente en el paso "Verify VPS secrets are configured" con un mensaje indicando cuáles faltan, en vez de fallar más adelante con un error críptico de conexión SSH (`appleboy/ssh-action` con `host`/`key` vacíos da un error poco claro).
 
 El script de deploy lee las variables de entorno de producción desde `.env.prod` **en la VPS** (no desde GitHub Actions) — GitHub Actions nunca ve los secretos de MercadoPago/Cloudinary/JWT de producción, solo las credenciales SSH para conectarse.
