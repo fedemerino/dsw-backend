@@ -188,6 +188,10 @@ export const cancelBooking = async (req, res) => {
           'MercadoPago refund failed:',
           refundError?.message ?? refundError
         );
+        if (refundError?.cause)
+          console.error('MercadoPago cause:', refundError.cause);
+        if (refundError?.body)
+          console.error('MercadoPago body:', refundError.body);
         return res.status(502).json({
           message:
             'No se pudo procesar el reembolso. La reserva no fue cancelada.',
@@ -303,6 +307,13 @@ export const updateBooking = async (req, res) => {
       });
     }
 
+    const requestedGuests = data.guests || booking.guests;
+    if (requestedGuests > booking.listing.maxGuests) {
+      return res.status(400).json({
+        message: `Este alojamiento admite hasta ${booking.listing.maxGuests} huéspedes`,
+      });
+    }
+
     const durationInDays = Math.ceil(
       (requestedEndDate - requestedStartDate) / (1000 * 60 * 60 * 24)
     );
@@ -353,7 +364,7 @@ export const updateBooking = async (req, res) => {
           data: {
             startDate: requestedStartDate,
             endDate: requestedEndDate,
-            guests: data.guests || booking.guests,
+            guests: requestedGuests,
             totalPrice,
           },
           include: { listing: true, payment: true },
@@ -505,6 +516,13 @@ export const createBooking = async (req, res) => {
       return res.status(400).json({ message: 'Listing not found' });
     }
 
+    const requestedGuests = guests || 1;
+    if (requestedGuests > listing.maxGuests) {
+      return res.status(400).json({
+        message: `Este alojamiento admite hasta ${listing.maxGuests} huéspedes`,
+      });
+    }
+
     const durationInDays = Math.ceil(
       (requestedEndDate - requestedStartDate) / (1000 * 60 * 60 * 24)
     );
@@ -542,7 +560,7 @@ export const createBooking = async (req, res) => {
             listing: { connect: { id: listingId } },
             startDate: requestedStartDate,
             endDate: requestedEndDate,
-            guests: guests || 1,
+            guests: requestedGuests,
             totalPrice,
             payment: { create: { amount: totalPrice } },
             user: { connect: { email: email } },

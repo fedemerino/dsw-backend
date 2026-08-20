@@ -677,6 +677,26 @@ describe('createBooking', () => {
     expect(bookingMock.create).not.toHaveBeenCalled();
   });
 
+  it('rejects when the party size exceeds the listing’s maxGuests', async () => {
+    listingMock.findFirst.mockResolvedValue({
+      id: 'listing-1',
+      title: 'Cozy place',
+      pricePerNight: 100,
+      maxGuests: 2,
+    });
+    userMock.findUnique.mockResolvedValue({ fullName: 'Guest User' });
+    const res = mockRes();
+
+    await createBooking(
+      { ...baseReq, body: { ...baseReq.body, guests: 5 } },
+      res
+    );
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(bookingMock.findMany).not.toHaveBeenCalled();
+    expect(bookingMock.create).not.toHaveBeenCalled();
+  });
+
   it('creates the booking and returns the MercadoPago init point on success', async () => {
     bookingMock.findMany.mockResolvedValue([]);
     listingMock.findFirst.mockResolvedValue({
@@ -684,6 +704,7 @@ describe('createBooking', () => {
       title: 'Cozy place',
       description: 'A nice place to stay',
       pricePerNight: 100,
+      maxGuests: 4,
     });
     userMock.findUnique.mockResolvedValue({ fullName: 'Guest User' });
     bookingMock.create.mockResolvedValue({
@@ -776,6 +797,27 @@ describe('updateBooking', () => {
       })
     );
     expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it('rejects when the party size exceeds the listing’s maxGuests', async () => {
+    bookingMock.findUnique.mockResolvedValue({
+      id: 'b1',
+      userEmail: 'user@example.com',
+      status: 'PENDING',
+      listingId: 'listing-1',
+      guests: 2,
+      listing: { pricePerNight: 100, maxGuests: 2 },
+    });
+    const res = mockRes();
+
+    await updateBooking(
+      { ...baseReq, body: { ...baseReq.body, guests: 5 } },
+      res
+    );
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(bookingMock.findMany).not.toHaveBeenCalled();
+    expect(bookingMock.update).not.toHaveBeenCalled();
   });
 
   it('returns 404 when the booking does not exist', async () => {
