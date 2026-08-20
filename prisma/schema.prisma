@@ -32,7 +32,6 @@ model City {
 
 enum Role {
   ADMIN
-  HOST
   USER
 }
 
@@ -53,6 +52,7 @@ model User {
   avatarUrl           String?
   active              Boolean              @default(true)
   blocked             Boolean              @default(false)
+  emailVerified       Boolean              @default(false)
   createdAt           DateTime             @default(now())
   updatedAt           DateTime?            @updatedAt
   bookings            Booking[]
@@ -60,6 +60,7 @@ model User {
   reviews             Review[]
   refreshTokens       RefreshToken[]
   resetPasswordTokens ResetPasswordToken[]
+  emailVerificationTokens EmailVerificationToken[]
   listings            Listing[]
   roles               UserRole[]
 
@@ -150,14 +151,16 @@ enum BookingStatus {
 }
 
 model Booking {
-  id         String        @id @default(uuid())
-  guests     Int
-  totalPrice Float
-  status     BookingStatus @default(PENDING)
-  createdAt  DateTime      @default(now())
-  updatedAt  DateTime?     @updatedAt
-  startDate  DateTime
-  endDate    DateTime
+  id                 String        @id @default(uuid())
+  guests             Int
+  totalPrice         Float
+  status             BookingStatus @default(PENDING)
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime?     @updatedAt
+  startDate          DateTime
+  endDate            DateTime
+  cancellationReason String?
+  cancelledBy        String?
 
   listingId String
   listing   Listing @relation(fields: [listingId], references: [id])
@@ -224,4 +227,14 @@ model ResetPasswordToken {
   createdAt DateTime @default(now())
 
   @@map("resetPasswordTokens")
+}
+
+model EmailVerificationToken {
+  token     String   @id
+  email     String
+  user      User     @relation(fields: [email], references: [email], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@map("emailVerificationTokens")
 }

@@ -8,10 +8,35 @@ import {
   forgotPasswordSchema,
   resetPasswordSchema,
   signUpSchema,
+  verifyEmailSchema,
+  resendVerificationSchema,
 } from '../schemas/auth.schema.js';
 import { MailService } from '../services/mail.service.js';
 
 const prisma = new PrismaClient();
+
+/**
+ * Generate a verification token for an email, store it and send the
+ * confirmation mail. Reused by signUp and resendVerificationEmail.
+ * @param {string} email
+ */
+const createAndSendVerificationEmail = async (email) => {
+  await prisma.emailVerificationToken.deleteMany({ where: { email } });
+
+  const token = jwt.sign({ email }, process.env.JWT_SECRET, {
+    expiresIn: '24h',
+  });
+  await prisma.emailVerificationToken.create({
+    data: {
+      token,
+      email,
+      expiresAt: moment().add(24, 'hours').toDate(),
+    },
+  });
+
+  const mailService = new MailService();
+  await mailService.sendVerificationEmail(email, token);
+};
 
 /**
  * Generate an access token for a user
@@ -109,23 +134,11 @@ export const signUp = async (req, res) => {
       },
     });
 
-    const accessToken = generateAccessToken(user);
-    const refreshToken = generateRefreshToken(user);
-
-    await prisma.refreshToken.create({
-      data: {
-        token: refreshToken,
-        userEmail: user.email,
-        expiresAt: moment().add(7, 'days').toDate(),
-      },
-    });
-
-    setRefreshTokenCookie(res, refreshToken);
+    await createAndSendVerificationEmail(user.email);
 
     res.status(201).json({
       user,
-      accessToken,
-      message: 'User created successfully',
+      message: 'Cuenta creada. Revisá tu email para confirmarla.',
     });
   } catch (error) {
     console.error('Signup error:', error);
@@ -147,6 +160,7 @@ export const login = async (req, res) => {
         phoneNumber: true,
         active: true,
         blocked: true,
+        emailVerified: true,
         roles: true,
         password: true,
       },
@@ -161,6 +175,13 @@ export const login = async (req, res) => {
     if (user.blocked) {
       return res.status(403).json({
         error: 'This account has been blocked by an administrator',
+      });
+    }
+
+    if (!user.emailVerified) {
+      return res.status(403).json({
+        error: 'Debés confirmar tu email antes de iniciar sesión',
+        code: 'EMAIL_NOT_VERIFIED',
       });
     }
 
@@ -233,11 +254,12 @@ export const refreshToken = async (req, res) => {
         phoneNumber: true,
         active: true,
         blocked: true,
+        emailVerified: true,
         roles: true,
       },
     });
 
-    if (!user || !user.active || user.blocked) {
+    if (!user || !user.active || user.blocked || !user.emailVerified) {
       return res.status(401).json({
         error: 'User not found or inactive',
       });
@@ -410,6 +432,95 @@ export const resetPassword = async (req, res) => {
     });
   } catch (error) {
     console.error('Reset password error:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+    });
+  }
+};
+
+export const verifyEmail = async (req, res) => {
+  try {
+    const { token } = verifyEmailSchema.parse(req.body);
+
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
+    } catch (_jwtError) {
+      return res.status(400).json({
+        error: 'Invalid or expired token',
+      });
+    }
+
+    const verificationToken = await prisma.emailVerificationToken.findUnique({
+      where: { token },
+    });
+
+    if (!verificationToken) {
+      return res.status(400).json({
+        error: 'Invalid token',
+      });
+    }
+
+    if (verificationToken.email !== decoded.email) {
+      return res.status(400).json({
+        error: 'Token mismatch',
+      });
+    }
+
+    if (verificationToken.expiresAt < moment().toDate()) {
+      return res.status(400).json({
+        error: 'Token expired',
+      });
+    }
+
+    await prisma.user.update({
+      where: { email: verificationToken.email },
+      data: { emailVerified: true },
+    });
+
+    await prisma.emailVerificationToken.deleteMany({
+      where: { email: verificationToken.email },
+    });
+
+    res.status(200).json({
+      message: 'Email verified successfully',
+    });
+  } catch (error) {
+    console.error('Verify email error:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+    });
+  }
+};
+
+export const resendVerificationEmail = async (req, res) => {
+  try {
+    const { error, data } = resendVerificationSchema.safeParse(req.body);
+    if (error) {
+      return res.status(400).json({
+        error: error.message,
+      });
+    }
+    const { email } = data;
+
+    const genericResponse = {
+      message:
+        'If the account exists and is not verified, an email has been sent',
+    };
+
+    const existingUser = await prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (!existingUser || existingUser.emailVerified) {
+      return res.status(200).json(genericResponse);
+    }
+
+    await createAndSendVerificationEmail(email);
+
+    res.status(200).json(genericResponse);
+  } catch (error) {
+    console.error('Resend verification email error:', error);
     res.status(500).json({
       error: 'Internal server error',
     });

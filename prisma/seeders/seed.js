@@ -140,6 +140,7 @@ async function main() {
         phoneNumber: '1234567890',
         password: hashedPassword,
         active: true,
+        emailVerified: true,
         roles: {
           create: {
             role: 'ADMIN',

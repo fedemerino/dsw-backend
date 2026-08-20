@@ -1,33 +1,68 @@
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { MercadoPagoService } from '../../services/mercadopago.service.js';
 import {
   getUserBookingsCount,
   getUserBookings,
   cancelBooking,
   getHostBookings,
+  getHostBookingStats,
   createBooking,
   updateBooking,
 } from '../../controllers/bookings.controller.js';
 
-jest.mock('@prisma/client', () => ({
-  PrismaClient: jest.fn().mockImplementation(() => ({
-    booking: {
-      count: jest.fn(),
-      findMany: jest.fn(),
-      findUnique: jest.fn(),
-      findFirst: jest.fn(),
-      update: jest.fn(),
-      create: jest.fn(),
+jest.mock('@prisma/client', () => {
+  class PrismaClientKnownRequestError extends Error {
+    constructor(message, { code }) {
+      super(message);
+      this.code = code;
+    }
+  }
+  return {
+    Prisma: {
+      TransactionIsolationLevel: { Serializable: 'Serializable' },
+      PrismaClientKnownRequestError,
+      sql: (strings, ...values) => ({ strings, values }),
+      empty: '',
     },
-    listing: { findFirst: jest.fn() },
-    user: { findUnique: jest.fn() },
-    payment: { update: jest.fn() },
-  })),
-}));
+    PrismaClient: jest.fn().mockImplementation(() => {
+      const instance = {
+        booking: {
+          count: jest.fn(),
+          findMany: jest.fn(),
+          findUnique: jest.fn(),
+          findFirst: jest.fn(),
+          update: jest.fn(),
+          create: jest.fn(),
+          groupBy: jest.fn(),
+        },
+        listing: { findFirst: jest.fn() },
+        user: { findUnique: jest.fn() },
+        payment: { update: jest.fn() },
+        $queryRaw: jest.fn(),
+      };
+      // `tx` inside runSerializable is this same instance, so mocking
+      // e.g. bookingMock.findMany below also covers calls made via `tx`.
+      // Supports both $transaction forms: callback (runSerializable) and
+      // array-of-promises (cancelBooking's Booking+Payment update).
+      instance.$transaction = jest.fn((arg) =>
+        typeof arg === 'function' ? arg(instance) : Promise.all(arg)
+      );
+      return instance;
+    }),
+  };
+});
 
 jest.mock('../../services/mercadopago.service.js', () => ({
   MercadoPagoService: jest.fn().mockImplementation(() => ({
     createPreference: jest.fn(),
+    refundPayment: jest.fn(),
+  })),
+}));
+
+jest.mock('../../services/mail.service.js', () => ({
+  MailService: jest.fn().mockImplementation(() => ({
+    sendBookingCreatedEmail: jest.fn(),
+    sendBookingCancelledEmail: jest.fn(),
   })),
 }));
 
@@ -37,6 +72,7 @@ const {
   listing: listingMock,
   user: userMock,
   payment: paymentMock,
+  $queryRaw: queryRawMock,
 } = prismaInstance;
 const mercadoPagoInstance = MercadoPagoService.mock.results[0].value;
 
@@ -195,31 +231,299 @@ describe('getHostBookings', () => {
   });
 });
 
+describe('getHostBookingStats', () => {
+  it('returns total revenue, status breakdown and the daily series', async () => {
+    bookingMock.groupBy.mockResolvedValue([
+      { status: 'CONFIRMED', _count: { _all: 3 }, _sum: { totalPrice: 300 } },
+      { status: 'CANCELLED', _count: { _all: 1 }, _sum: { totalPrice: 100 } },
+    ]);
+    queryRawMock.mockResolvedValue([
+      { date: '2027-01-10', revenue: 100, bookings: 1 },
+      { date: '2027-01-12', revenue: 200, bookings: 2 },
+    ]);
+
+    const req = {
+      user: { email: 'host@example.com' },
+      query: {},
+    };
+    const res = mockRes();
+
+    await getHostBookingStats(req, res);
+
+    expect(bookingMock.groupBy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        by: ['status'],
+        where: { listing: { userEmail: 'host@example.com' } },
+      })
+    );
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({
+      totalRevenue: 300,
+      bookingsByStatus: { CONFIRMED: 3, CANCELLED: 1 },
+      series: [
+        { date: '2027-01-10', revenue: 100, bookings: 1 },
+        { date: '2027-01-12', revenue: 200, bookings: 2 },
+      ],
+    });
+  });
+
+  it('scopes by listingId and date range when provided', async () => {
+    bookingMock.groupBy.mockResolvedValue([]);
+    queryRawMock.mockResolvedValue([]);
+
+    const req = {
+      user: { email: 'host@example.com' },
+      query: {
+        listingId: 'listing-1',
+        startDate: '2027-01-01',
+        endDate: '2027-01-31',
+      },
+    };
+    const res = mockRes();
+
+    await getHostBookingStats(req, res);
+
+    expect(bookingMock.groupBy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          listing: { userEmail: 'host@example.com', id: 'listing-1' },
+          createdAt: expect.objectContaining({
+            gte: new Date('2027-01-01'),
+            lte: new Date('2027-01-31'),
+          }),
+        }),
+      })
+    );
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it('returns 0 revenue when there are no CONFIRMED bookings', async () => {
+    bookingMock.groupBy.mockResolvedValue([
+      { status: 'PENDING', _count: { _all: 1 }, _sum: { totalPrice: 50 } },
+    ]);
+    queryRawMock.mockResolvedValue([]);
+
+    const req = { user: { email: 'host@example.com' }, query: {} };
+    const res = mockRes();
+
+    await getHostBookingStats(req, res);
+
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({ totalRevenue: 0 })
+    );
+  });
+
+  it('returns 500 on an unexpected database error', async () => {
+    bookingMock.groupBy.mockRejectedValue(new Error('db down'));
+    const req = { user: { email: 'host@example.com' }, query: {} };
+    const res = mockRes();
+
+    await getHostBookingStats(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(500);
+  });
+});
+
 describe('cancelBooking', () => {
-  it('cancels a booking owned by the requester', async () => {
+  it('lets the guest cancel without a reason', async () => {
     bookingMock.findUnique.mockResolvedValue({
       id: 'b1',
       userEmail: 'user@example.com',
       status: 'PENDING',
       startDate: new Date(Date.now() + 1000 * 60 * 60 * 24),
+      listing: { userEmail: 'host@example.com' },
+      payment: { status: 'PENDING', paymentId: null },
     });
-    bookingMock.update.mockResolvedValue({ id: 'b1', status: 'CANCELLED' });
+    bookingMock.update.mockResolvedValue({
+      id: 'b1',
+      status: 'CANCELLED',
+      listing: { userEmail: 'host@example.com', title: 'Loft' },
+      user: { email: 'user@example.com', fullName: 'Guest User' },
+    });
 
     const req = {
       params: { bookingId: 'b1' },
+      body: {},
       user: { email: 'user@example.com' },
     };
     const res = mockRes();
 
     await cancelBooking(req, res);
 
+    expect(bookingMock.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'CANCELLED',
+          cancellationReason: null,
+          cancelledBy: 'user@example.com',
+        }),
+      })
+    );
+    expect(mercadoPagoInstance.refundPayment).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it('lets the host cancel with a reason', async () => {
+    bookingMock.findUnique.mockResolvedValue({
+      id: 'b1',
+      userEmail: 'guest@example.com',
+      status: 'PENDING',
+      startDate: new Date(Date.now() + 1000 * 60 * 60 * 24),
+      listing: { userEmail: 'host@example.com' },
+      payment: { status: 'PENDING', paymentId: null },
+    });
+    bookingMock.update.mockResolvedValue({
+      id: 'b1',
+      status: 'CANCELLED',
+      listing: { userEmail: 'host@example.com', title: 'Loft' },
+      user: { email: 'guest@example.com', fullName: 'Guest User' },
+    });
+
+    const req = {
+      params: { bookingId: 'b1' },
+      body: { reason: 'Surgió un problema con la propiedad' },
+      user: { email: 'host@example.com' },
+    };
+    const res = mockRes();
+
+    await cancelBooking(req, res);
+
+    expect(bookingMock.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          cancellationReason: 'Surgió un problema con la propiedad',
+          cancelledBy: 'host@example.com',
+        }),
+      })
+    );
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it('rejects a host cancelling without a reason', async () => {
+    bookingMock.findUnique.mockResolvedValue({
+      id: 'b1',
+      userEmail: 'guest@example.com',
+      status: 'PENDING',
+      startDate: new Date(Date.now() + 1000 * 60 * 60 * 24),
+      listing: { userEmail: 'host@example.com' },
+      payment: { status: 'PENDING', paymentId: null },
+    });
+
+    const req = {
+      params: { bookingId: 'b1' },
+      body: {},
+      user: { email: 'host@example.com' },
+    };
+    const res = mockRes();
+
+    await cancelBooking(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(bookingMock.update).not.toHaveBeenCalled();
+  });
+
+  it('refunds via MercadoPago when cancelling a paid, confirmed booking', async () => {
+    bookingMock.findUnique.mockResolvedValue({
+      id: 'b1',
+      userEmail: 'guest@example.com',
+      status: 'CONFIRMED',
+      startDate: new Date(Date.now() + 1000 * 60 * 60 * 24),
+      listing: { userEmail: 'host@example.com' },
+      payment: { status: 'APPROVED', paymentId: 'mp-payment-1' },
+    });
+    mercadoPagoInstance.refundPayment.mockResolvedValue({ id: 'refund-1' });
+    bookingMock.update.mockResolvedValue({
+      id: 'b1',
+      status: 'CANCELLED',
+      listing: { userEmail: 'host@example.com', title: 'Loft' },
+      user: { email: 'guest@example.com', fullName: 'Guest User' },
+    });
+    paymentMock.update.mockResolvedValue({ status: 'REFUNDED' });
+
+    const req = {
+      params: { bookingId: 'b1' },
+      body: { reason: 'Ya no puedo hospedar' },
+      user: { email: 'host@example.com' },
+    };
+    const res = mockRes();
+
+    await cancelBooking(req, res);
+
+    expect(mercadoPagoInstance.refundPayment).toHaveBeenCalledWith(
+      'mp-payment-1'
+    );
+    expect(paymentMock.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { bookingId: 'b1' },
+        data: { status: 'REFUNDED' },
+      })
+    );
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it('returns 502 and does not cancel when the refund fails', async () => {
+    bookingMock.findUnique.mockResolvedValue({
+      id: 'b1',
+      userEmail: 'guest@example.com',
+      status: 'CONFIRMED',
+      startDate: new Date(Date.now() + 1000 * 60 * 60 * 24),
+      listing: { userEmail: 'host@example.com' },
+      payment: { status: 'APPROVED', paymentId: 'mp-payment-1' },
+    });
+    mercadoPagoInstance.refundPayment.mockRejectedValue(
+      new Error('MercadoPago is down')
+    );
+
+    const req = {
+      params: { bookingId: 'b1' },
+      body: { reason: 'Ya no puedo hospedar' },
+      user: { email: 'host@example.com' },
+    };
+    const res = mockRes();
+
+    await cancelBooking(req, res);
+
+    expect(bookingMock.update).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(502);
+  });
+
+  it('logs loudly and returns 500 if the DB write fails after a successful refund', async () => {
+    bookingMock.findUnique.mockResolvedValue({
+      id: 'b1',
+      userEmail: 'guest@example.com',
+      status: 'CONFIRMED',
+      startDate: new Date(Date.now() + 1000 * 60 * 60 * 24),
+      listing: { userEmail: 'host@example.com' },
+      payment: { status: 'APPROVED', paymentId: 'mp-payment-1' },
+    });
+    mercadoPagoInstance.refundPayment.mockResolvedValue({ id: 'refund-1' });
+    bookingMock.update.mockRejectedValue(new Error('db down'));
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
+
+    const req = {
+      params: { bookingId: 'b1' },
+      body: { reason: 'Ya no puedo hospedar' },
+      user: { email: 'host@example.com' },
+    };
+    const res = mockRes();
+
+    await cancelBooking(req, res);
+
+    expect(mercadoPagoInstance.refundPayment).toHaveBeenCalled();
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining('REFUND SUCCEEDED BUT DB UPDATE FAILED'),
+      expect.any(Error)
+    );
+    expect(res.status).toHaveBeenCalledWith(500);
+
+    consoleSpy.mockRestore();
   });
 
   it('returns 404 when the booking does not exist', async () => {
     bookingMock.findUnique.mockResolvedValue(null);
     const req = {
       params: { bookingId: 'ghost' },
+      body: {},
       user: { email: 'user@example.com' },
     };
     const res = mockRes();
@@ -233,9 +537,11 @@ describe('cancelBooking', () => {
     bookingMock.findUnique.mockResolvedValue({
       id: 'b1',
       userEmail: 'other@example.com',
+      listing: { userEmail: 'yet-another@example.com' },
     });
     const req = {
       params: { bookingId: 'b1' },
+      body: {},
       user: { email: 'user@example.com' },
     };
     const res = mockRes();
@@ -250,9 +556,11 @@ describe('cancelBooking', () => {
       id: 'b1',
       userEmail: 'user@example.com',
       status: 'CANCELLED',
+      listing: { userEmail: 'host@example.com' },
     });
     const req = {
       params: { bookingId: 'b1' },
+      body: {},
       user: { email: 'user@example.com' },
     };
     const res = mockRes();
@@ -268,9 +576,11 @@ describe('cancelBooking', () => {
       userEmail: 'user@example.com',
       status: 'CONFIRMED',
       startDate: new Date(Date.now() - 1000 * 60 * 60 * 24),
+      listing: { userEmail: 'host@example.com' },
     });
     const req = {
       params: { bookingId: 'b1' },
+      body: {},
       user: { email: 'user@example.com' },
     };
     const res = mockRes();
@@ -284,6 +594,7 @@ describe('cancelBooking', () => {
     bookingMock.findUnique.mockRejectedValue(new Error('db down'));
     const req = {
       params: { bookingId: 'b1' },
+      body: {},
       user: { email: 'user@example.com' },
     };
     const res = mockRes();
@@ -319,12 +630,39 @@ describe('createBooking', () => {
   });
 
   it('rejects when there are conflicting bookings', async () => {
+    listingMock.findFirst.mockResolvedValue({
+      id: 'listing-1',
+      title: 'Cozy place',
+      pricePerNight: 100,
+    });
+    userMock.findUnique.mockResolvedValue({ fullName: 'Guest User' });
     bookingMock.findMany.mockResolvedValue([{ id: 'existing' }]);
     const res = mockRes();
 
     await createBooking({ ...baseReq }, res);
 
+    expect(bookingMock.findMany).toHaveBeenCalled();
+    expect(bookingMock.create).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(400);
+  });
+
+  it('returns 409 when a serialization conflict is not resolved after retries', async () => {
+    listingMock.findFirst.mockResolvedValue({
+      id: 'listing-1',
+      title: 'Cozy place',
+      pricePerNight: 100,
+    });
+    userMock.findUnique.mockResolvedValue({ fullName: 'Guest User' });
+    const serializationError = new Prisma.PrismaClientKnownRequestError(
+      'Transaction failed due to a write conflict',
+      { code: 'P2034' }
+    );
+    bookingMock.findMany.mockRejectedValue(serializationError);
+    const res = mockRes();
+
+    await createBooking({ ...baseReq }, res);
+
+    expect(res.status).toHaveBeenCalledWith(409);
   });
 
   it('rejects when the listing does not exist', async () => {
@@ -508,6 +846,26 @@ describe('updateBooking', () => {
 
     expect(res.status).toHaveBeenCalledWith(400);
     expect(bookingMock.update).not.toHaveBeenCalled();
+  });
+
+  it('returns 409 when a serialization conflict is not resolved after retries', async () => {
+    bookingMock.findUnique.mockResolvedValue({
+      id: 'b1',
+      userEmail: 'user@example.com',
+      status: 'PENDING',
+      listingId: 'listing-1',
+      listing: { pricePerNight: 100 },
+    });
+    const serializationError = new Prisma.PrismaClientKnownRequestError(
+      'Transaction failed due to a write conflict',
+      { code: 'P2034' }
+    );
+    bookingMock.findMany.mockRejectedValue(serializationError);
+    const res = mockRes();
+
+    await updateBooking({ ...baseReq }, res);
+
+    expect(res.status).toHaveBeenCalledWith(409);
   });
 
   it('returns 500 on an unexpected database error', async () => {

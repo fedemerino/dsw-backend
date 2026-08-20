@@ -14,7 +14,7 @@ Authorization: Bearer <accessToken>
 
 - El **access token** dura 15 minutos y se obtiene en `login`/`signUp`/`refresh`.
 - El **refresh token** dura 7 días y viaja en una cookie `httpOnly` (`refreshToken`), con `path=/api/auth`. Se usa automáticamente al pegarle a `GET /api/auth/refresh`.
-- Roles disponibles: `USER` (default al registrarse), `HOST`, `ADMIN`. Un usuario puede tener más de un rol (tabla `userRoles`).
+- Roles disponibles: `USER` (default al registrarse), `ADMIN`. Un usuario puede tener más de un rol (tabla `userRoles`).
 - Las rutas marcadas **🔒 Auth** requieren access token válido. Las marcadas **🔒 Admin** requieren además el rol `ADMIN` (middleware `requireAdmin`).
 
 Errores comunes: `401` (sin token / token inválido o expirado), `403` (autenticado pero sin permiso sobre el recurso), `404` (no encontrado), `400` (validación), `500` (error interno).

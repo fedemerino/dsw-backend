@@ -44,4 +44,4 @@ Dos CUUs relacionados entre sí (dato de uno alimenta al otro), como pide el pun
 
 ## Roles y niveles de acceso
 
-`USER` (default al registrarse), `HOST` (semántico, mismos permisos que `USER` hoy) y `ADMIN` (gestión de usuarios: listar, bloquear/desbloquear, dar de baja). Ver `docs/arquitectura.md` para el detalle de middleware de protección de rutas.
+`USER` (default al registrarse) y `ADMIN` (gestión de usuarios: listar, bloquear/desbloquear, dar de baja). Cualquier `USER` ya puede publicar alojamientos — no existe un rol `HOST` separado. Ver `docs/arquitectura.md` para el detalle de middleware de protección de rutas.

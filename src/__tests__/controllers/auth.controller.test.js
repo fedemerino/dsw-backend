@@ -8,9 +8,12 @@ import {
   logout,
   forgotPassword,
   resetPassword,
+  verifyEmail,
+  resendVerificationEmail,
 } from '../../controllers/auth.controller.js';
 
 const mockSendResetPasswordEmail = jest.fn();
+const mockSendVerificationEmail = jest.fn();
 
 jest.mock('@prisma/client', () => ({
   PrismaClient: jest.fn().mockImplementation(() => ({
@@ -25,12 +28,18 @@ jest.mock('@prisma/client', () => ({
       create: jest.fn(),
       findUnique: jest.fn(),
     },
+    emailVerificationToken: {
+      deleteMany: jest.fn(),
+      create: jest.fn(),
+      findUnique: jest.fn(),
+    },
   })),
 }));
 
 jest.mock('../../services/mail.service.js', () => ({
   MailService: jest.fn().mockImplementation(() => ({
     sendResetPasswordEmail: mockSendResetPasswordEmail,
+    sendVerificationEmail: mockSendVerificationEmail,
   })),
 }));
 
@@ -47,6 +56,12 @@ const mockRefreshTokenDeleteMany = prismaInstance.refreshToken.deleteMany;
 const mockResetTokenDeleteMany = prismaInstance.resetPasswordToken.deleteMany;
 const mockResetTokenCreate = prismaInstance.resetPasswordToken.create;
 const mockResetTokenFindUnique = prismaInstance.resetPasswordToken.findUnique;
+const mockVerificationTokenDeleteMany =
+  prismaInstance.emailVerificationToken.deleteMany;
+const mockVerificationTokenCreate =
+  prismaInstance.emailVerificationToken.create;
+const mockVerificationTokenFindUnique =
+  prismaInstance.emailVerificationToken.findUnique;
 
 const mockRes = () => {
   const res = {};
@@ -69,14 +84,15 @@ describe('signUp', () => {
     confirmPassword: 'password123',
   };
 
-  it('creates a new user and returns tokens', async () => {
+  it('creates a new user and sends a verification email, without logging in', async () => {
     mockUserFindUnique.mockResolvedValue(null);
     mockUserCreate.mockResolvedValue({
       email: body.email,
       fullName: body.fullName,
       roles: [{ role: 'USER' }],
     });
-    mockRefreshTokenCreate.mockResolvedValue({});
+    mockVerificationTokenDeleteMany.mockResolvedValue({});
+    mockVerificationTokenCreate.mockResolvedValue({});
 
     const req = { body };
     const res = mockRes();
@@ -84,14 +100,15 @@ describe('signUp', () => {
     await signUp(req, res);
 
     expect(res.status).toHaveBeenCalledWith(201);
-    expect(res.cookie).toHaveBeenCalledWith(
-      'refreshToken',
-      expect.any(String),
-      expect.any(Object)
+    expect(res.cookie).not.toHaveBeenCalled();
+    expect(mockVerificationTokenCreate).toHaveBeenCalled();
+    expect(mockSendVerificationEmail).toHaveBeenCalledWith(
+      body.email,
+      expect.any(String)
     );
-    expect(res.json).toHaveBeenCalledWith(
-      expect.objectContaining({ message: 'User created successfully' })
-    );
+    const payload = res.json.mock.calls[0][0];
+    expect(payload.accessToken).toBeUndefined();
+    expect(payload.message).toMatch(/revisá tu email/i);
   });
 
   it('rejects when the user already exists', async () => {
@@ -124,6 +141,7 @@ describe('login', () => {
       email: 'user@example.com',
       fullName: 'User',
       active: true,
+      emailVerified: true,
       roles: [{ role: 'USER' }],
       password: hashed,
     });
@@ -175,6 +193,7 @@ describe('login', () => {
       email: 'blocked@example.com',
       active: true,
       blocked: true,
+      emailVerified: true,
       roles: [{ role: 'USER' }],
       password: hashed,
     });
@@ -192,11 +211,37 @@ describe('login', () => {
     });
   });
 
+  it('rejects a user who has not verified their email', async () => {
+    const hashed = await bcrypt.hash('password123', 4);
+    mockUserFindUnique.mockResolvedValue({
+      email: 'unverified@example.com',
+      active: true,
+      blocked: false,
+      emailVerified: false,
+      roles: [{ role: 'USER' }],
+      password: hashed,
+    });
+
+    const req = {
+      body: { email: 'unverified@example.com', password: 'password123' },
+    };
+    const res = mockRes();
+
+    await login(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json).toHaveBeenCalledWith({
+      error: 'Debés confirmar tu email antes de iniciar sesión',
+      code: 'EMAIL_NOT_VERIFIED',
+    });
+  });
+
   it('rejects an invalid password', async () => {
     const hashed = await bcrypt.hash('correct-password', 4);
     mockUserFindUnique.mockResolvedValue({
       email: 'user@example.com',
       active: true,
+      emailVerified: true,
       roles: [],
       password: hashed,
     });
@@ -327,6 +372,7 @@ describe('refreshToken', () => {
     mockUserFindUnique.mockResolvedValue({
       email: 'user@example.com',
       active: true,
+      emailVerified: true,
       roles: [{ role: 'USER' }],
     });
 
@@ -625,6 +671,181 @@ describe('resetPassword', () => {
     const res = mockRes();
 
     await resetPassword(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(500);
+  });
+});
+
+describe('verifyEmail', () => {
+  it('rejects an invalid or expired JWT', async () => {
+    const req = { body: { token: 'not-a-jwt' } };
+    const res = mockRes();
+
+    await verifyEmail(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({
+      error: 'Invalid or expired token',
+    });
+  });
+
+  it('rejects when the verification token is not in the database', async () => {
+    const token = jwt.sign(
+      { email: 'user@example.com' },
+      process.env.JWT_SECRET
+    );
+    mockVerificationTokenFindUnique.mockResolvedValue(null);
+
+    const req = { body: { token } };
+    const res = mockRes();
+
+    await verifyEmail(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({ error: 'Invalid token' });
+  });
+
+  it('rejects a token whose email does not match the stored record', async () => {
+    const token = jwt.sign(
+      { email: 'user@example.com' },
+      process.env.JWT_SECRET
+    );
+    mockVerificationTokenFindUnique.mockResolvedValue({
+      email: 'someone-else@example.com',
+      expiresAt: new Date(Date.now() + 1000 * 60 * 60),
+    });
+
+    const req = { body: { token } };
+    const res = mockRes();
+
+    await verifyEmail(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({ error: 'Token mismatch' });
+  });
+
+  it('rejects an expired verification token', async () => {
+    const token = jwt.sign(
+      { email: 'user@example.com' },
+      process.env.JWT_SECRET
+    );
+    mockVerificationTokenFindUnique.mockResolvedValue({
+      email: 'user@example.com',
+      expiresAt: new Date(Date.now() - 1000),
+    });
+
+    const req = { body: { token } };
+    const res = mockRes();
+
+    await verifyEmail(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({ error: 'Token expired' });
+  });
+
+  it('marks the user as verified for a valid token', async () => {
+    const token = jwt.sign(
+      { email: 'user@example.com' },
+      process.env.JWT_SECRET
+    );
+    mockVerificationTokenFindUnique.mockResolvedValue({
+      email: 'user@example.com',
+      expiresAt: new Date(Date.now() + 1000 * 60 * 60),
+    });
+    mockUserUpdate.mockResolvedValue({});
+    mockVerificationTokenDeleteMany.mockResolvedValue({});
+
+    const req = { body: { token } };
+    const res = mockRes();
+
+    await verifyEmail(req, res);
+
+    expect(mockUserUpdate).toHaveBeenCalledWith({
+      where: { email: 'user@example.com' },
+      data: { emailVerified: true },
+    });
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it('returns 500 on an unexpected database error', async () => {
+    const token = jwt.sign(
+      { email: 'user@example.com' },
+      process.env.JWT_SECRET
+    );
+    mockVerificationTokenFindUnique.mockRejectedValue(new Error('db down'));
+
+    const req = { body: { token } };
+    const res = mockRes();
+
+    await verifyEmail(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(500);
+  });
+});
+
+describe('resendVerificationEmail', () => {
+  it('responds with a generic message when the account does not exist', async () => {
+    mockUserFindUnique.mockResolvedValue(null);
+
+    const req = { body: { email: 'ghost@example.com' } };
+    const res = mockRes();
+
+    await resendVerificationEmail(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(mockSendVerificationEmail).not.toHaveBeenCalled();
+  });
+
+  it('responds with a generic message when the account is already verified', async () => {
+    mockUserFindUnique.mockResolvedValue({
+      email: 'user@example.com',
+      emailVerified: true,
+    });
+
+    const req = { body: { email: 'user@example.com' } };
+    const res = mockRes();
+
+    await resendVerificationEmail(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(mockSendVerificationEmail).not.toHaveBeenCalled();
+  });
+
+  it('sends a new verification email for an unverified account', async () => {
+    mockUserFindUnique.mockResolvedValue({
+      email: 'user@example.com',
+      emailVerified: false,
+    });
+    mockVerificationTokenDeleteMany.mockResolvedValue({});
+    mockVerificationTokenCreate.mockResolvedValue({});
+
+    const req = { body: { email: 'user@example.com' } };
+    const res = mockRes();
+
+    await resendVerificationEmail(req, res);
+
+    expect(mockSendVerificationEmail).toHaveBeenCalledWith(
+      'user@example.com',
+      expect.any(String)
+    );
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it('rejects an invalid email', async () => {
+    const req = { body: { email: 'not-an-email' } };
+    const res = mockRes();
+
+    await resendVerificationEmail(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+  });
+
+  it('returns 500 on an unexpected database error', async () => {
+    mockUserFindUnique.mockRejectedValue(new Error('db down'));
+    const req = { body: { email: 'user@example.com' } };
+    const res = mockRes();
+
+    await resendVerificationEmail(req, res);
 
     expect(res.status).toHaveBeenCalledWith(500);
   });

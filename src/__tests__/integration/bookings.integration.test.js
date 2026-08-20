@@ -34,6 +34,27 @@ let hostToken;
 let guestToken;
 let bookingId;
 
+async function signUpVerifyAndLogin(email, fullName) {
+  await request(app).post('/api/auth/signUp').send({
+    email,
+    fullName,
+    password,
+    confirmPassword: password,
+  });
+
+  const verificationToken = await prisma.emailVerificationToken.findFirst({
+    where: { email },
+  });
+  await request(app)
+    .post('/api/auth/verifyEmail')
+    .send({ token: verificationToken.token });
+
+  const loginRes = await request(app)
+    .post('/api/auth/login')
+    .send({ email, password });
+  return loginRes.body.accessToken;
+}
+
 beforeAll(async () => {
   const province = await prisma.province.create({
     data: { name: `Test Province ${suffix}` },
@@ -50,21 +71,8 @@ beforeAll(async () => {
   });
   amenityId = amenity.id;
 
-  const hostSignUp = await request(app).post('/api/auth/signUp').send({
-    email: hostEmail,
-    fullName: 'Host User',
-    password,
-    confirmPassword: password,
-  });
-  hostToken = hostSignUp.body.accessToken;
-
-  const guestSignUp = await request(app).post('/api/auth/signUp').send({
-    email: guestEmail,
-    fullName: 'Guest User',
-    password,
-    confirmPassword: password,
-  });
-  guestToken = guestSignUp.body.accessToken;
+  hostToken = await signUpVerifyAndLogin(hostEmail, 'Host User');
+  guestToken = await signUpVerifyAndLogin(guestEmail, 'Guest User');
 });
 
 afterAll(async () => {
@@ -148,7 +156,7 @@ describe('Listings + Bookings flow (integration)', () => {
     expect(res.body.booking.status).toBe('CANCELLED');
   });
 
-  it('prevents another user from cancelling someone else’s booking', async () => {
+  it('lets the host cancel a booking on their own listing when a reason is given', async () => {
     const rebook = await request(app)
       .post('/api/bookings')
       .set('Authorization', `Bearer ${guestToken}`)
@@ -161,8 +169,58 @@ describe('Listings + Bookings flow (integration)', () => {
 
     const res = await request(app)
       .delete(`/api/bookings/${rebook.body.booking.id}`)
+      .set('Authorization', `Bearer ${hostToken}`)
+      .send({ reason: 'Surgió un imprevisto con la propiedad' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.booking.status).toBe('CANCELLED');
+    expect(res.body.booking.cancellationReason).toBe(
+      'Surgió un imprevisto con la propiedad'
+    );
+  });
+
+  it('rejects a host cancellation without a reason', async () => {
+    const rebook = await request(app)
+      .post('/api/bookings')
+      .set('Authorization', `Bearer ${guestToken}`)
+      .send({
+        listingId,
+        startDate: '2027-03-01',
+        endDate: '2027-03-05',
+        guests: 1,
+      });
+
+    const res = await request(app)
+      .delete(`/api/bookings/${rebook.body.booking.id}`)
       .set('Authorization', `Bearer ${hostToken}`);
 
+    expect(res.status).toBe(400);
+  });
+
+  it('prevents an unrelated user from cancelling someone else’s booking', async () => {
+    const strangerEmail = `stranger-${suffix}@example.com`;
+    const strangerToken = await signUpVerifyAndLogin(
+      strangerEmail,
+      'Stranger User'
+    );
+
+    const rebook = await request(app)
+      .post('/api/bookings')
+      .set('Authorization', `Bearer ${guestToken}`)
+      .send({
+        listingId,
+        startDate: '2027-04-01',
+        endDate: '2027-04-05',
+        guests: 1,
+      });
+
+    const res = await request(app)
+      .delete(`/api/bookings/${rebook.body.booking.id}`)
+      .set('Authorization', `Bearer ${strangerToken}`)
+      .send({ reason: 'no debería poder' });
+
     expect(res.status).toBe(403);
+
+    await prisma.user.deleteMany({ where: { email: strangerEmail } });
   });
 });

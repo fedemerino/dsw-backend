@@ -17,7 +17,9 @@
     "migrate:down": "prisma migrate dev --to-last",
     "migrate:reset": "prisma migrate reset --skip-seed",
     "seed": "node prisma/seeders/seed.js",
-    "setup": "node scripts/setup.js"
+    "setup": "node scripts/setup.js",
+    "upload-images": "node --env-file=.env scripts/upload-listing-images.js",
+    "images-sql": "node --env-file=.env scripts/generate-listing-images-sql.js"
   },
   "prisma": {
     "seed": "node prisma/seeders/seed.js"
@@ -53,6 +55,7 @@
     "jsonwebtoken": "^9.0.2",
     "mercadopago": "^3.4.0",
     "moment": "^2.30.1",
+    "node-cron": "^4.6.0",
     "nodemailer": "^9.0.3",
     "swagger-ui-express": "^5.0.1",
     "zod": "^4.1.11"

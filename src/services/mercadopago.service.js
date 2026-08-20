@@ -1,6 +1,12 @@
 import crypto from 'crypto';
 import { PrismaClient } from '@prisma/client';
-import { MercadoPagoConfig, Payment, Preference } from 'mercadopago';
+import {
+  MercadoPagoConfig,
+  Payment,
+  Preference,
+  PaymentRefund,
+} from 'mercadopago';
+import { MailService } from './mail.service.js';
 
 export class MercadoPagoService {
   constructor() {
@@ -8,6 +14,7 @@ export class MercadoPagoService {
       accessToken: process.env.MERCADOPAGO_ACCESS_TOKEN,
     });
     this.prisma = new PrismaClient();
+    this.mailService = new MailService();
   }
 
   /**
@@ -67,6 +74,16 @@ export class MercadoPagoService {
       },
     });
     return response;
+  }
+
+  /**
+   * Fully refunds a MercadoPago payment.
+   * @param {string} paymentId - MercadoPago's own payment id (our `Payment.paymentId`, NOT `Payment.id`)
+   * @returns {Promise<Object>} The refund resource created by MercadoPago
+   */
+  async refundPayment(paymentId) {
+    const refundClient = new PaymentRefund(this.client);
+    return refundClient.total({ payment_id: paymentId });
   }
 
   /**
@@ -153,10 +170,41 @@ export class MercadoPagoService {
 
     if (updated?.bookingId) {
       if (status === 'APPROVED') {
-        await this.prisma.booking.update({
-          where: { id: updated.bookingId },
+        // Conditional update: if the 24h auto-cancel job already cancelled
+        // this booking before this (possibly late) webhook arrived, don't
+        // resurrect it - flag it instead, since the guest was likely charged
+        // for a booking we already gave up as expired.
+        const result = await this.prisma.booking.updateMany({
+          where: { id: updated.bookingId, status: { not: 'CANCELLED' } },
           data: { status: 'CONFIRMED' },
         });
+        if (result.count === 0) {
+          console.warn(
+            `Payment ${dbPaymentId} approved for booking ${updated.bookingId} but it was already CANCELLED — may need manual refund.`
+          );
+        } else {
+          const confirmedBooking = await this.prisma.booking.findUnique({
+            where: { id: updated.bookingId },
+            select: {
+              startDate: true,
+              endDate: true,
+              totalPrice: true,
+              user: { select: { email: true } },
+              listing: { select: { title: true } },
+            },
+          });
+          if (confirmedBooking) {
+            await this.mailService.sendPaymentConfirmedEmail(
+              confirmedBooking.user.email,
+              {
+                listingTitle: confirmedBooking.listing.title,
+                startDate: confirmedBooking.startDate,
+                endDate: confirmedBooking.endDate,
+                totalPrice: confirmedBooking.totalPrice,
+              }
+            );
+          }
+        }
       } else if (status === 'REJECTED') {
         await this.prisma.booking.update({
           where: { id: updated.bookingId },

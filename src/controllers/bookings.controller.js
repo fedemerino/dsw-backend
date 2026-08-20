@@ -1,5 +1,6 @@
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { MercadoPagoService } from '../services/mercadopago.service.js';
+import { MailService } from '../services/mail.service.js';
 import {
   createBookingSchema,
   updateBookingSchema,
@@ -7,6 +8,35 @@ import {
 
 const prisma = new PrismaClient();
 const mercadoPagoService = new MercadoPagoService();
+const mailService = new MailService();
+
+/**
+ * Runs `fn` inside a Serializable Prisma transaction, retrying a few times
+ * on a serialization conflict (Postgres/Prisma error code P2034) before
+ * giving up. Used to close check-then-act races on booking date conflicts.
+ * @param {(tx: import('@prisma/client').Prisma.TransactionClient) => Promise<any>} fn
+ * @param {number} retries
+ */
+async function runSerializable(fn, retries = 3) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await prisma.$transaction(fn, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      });
+    } catch (err) {
+      const isSerializationConflict =
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2034';
+      if (isSerializationConflict && attempt < retries) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, 50 + Math.random() * 100)
+        );
+        continue;
+      }
+      throw err;
+    }
+  }
+}
 
 /**
  * Gets the number of total and upcoming bookings for a user
@@ -95,7 +125,10 @@ export const getUserBookings = async (req, res) => {
 };
 
 /**
- * Cancels a booking
+ * Cancels a booking. The guest who owns it or the host of its listing can
+ * cancel. If the booking was CONFIRMED and paid, this triggers a real
+ * MercadoPago refund before touching the DB - a failed refund aborts the
+ * cancellation entirely (never cancels without refunding).
  * @param {Object} req - The request object
  * @param {Object} res - The response object
  * @returns {Promise<void>}
@@ -106,19 +139,26 @@ export const cancelBooking = async (req, res) => {
     const { email } = req.user; // Usuario autenticado
 
     const booking = await prisma.booking.findUnique({
-      where: {
-        id: bookingId,
-      },
+      where: { id: bookingId },
+      include: { listing: true, payment: true },
     });
 
     if (!booking) {
       return res.status(404).json({ message: 'Booking not found' });
     }
 
-    // Verify that the user owns this booking
-    if (booking.userEmail !== email) {
+    const isGuest = booking.userEmail === email;
+    const isHost = booking.listing.userEmail === email;
+    if (!isGuest && !isHost) {
       return res.status(403).json({
         message: 'You do not have permission to cancel this booking',
+      });
+    }
+
+    const reason = req.body?.reason?.trim();
+    if (isHost && !reason) {
+      return res.status(400).json({
+        message: 'A cancellation reason is required when the host cancels',
       });
     }
 
@@ -134,26 +174,77 @@ export const cancelBooking = async (req, res) => {
       });
     }
 
-    // Update booking status to CANCELLED
-    const cancelledBooking = await prisma.booking.update({
-      where: {
-        id: bookingId,
-      },
-      data: {
-        status: 'CANCELLED',
-      },
-      include: {
-        listing: {
+    let refunded = false;
+    if (
+      booking.status === 'CONFIRMED' &&
+      booking.payment?.status === 'APPROVED' &&
+      booking.payment?.paymentId
+    ) {
+      try {
+        await mercadoPagoService.refundPayment(booking.payment.paymentId);
+        refunded = true;
+      } catch (refundError) {
+        console.error(
+          'MercadoPago refund failed:',
+          refundError?.message ?? refundError
+        );
+        return res.status(502).json({
+          message:
+            'No se pudo procesar el reembolso. La reserva no fue cancelada.',
+        });
+      }
+    }
+
+    let cancelledBooking;
+    try {
+      [cancelledBooking] = await prisma.$transaction([
+        prisma.booking.update({
+          where: { id: bookingId },
+          data: {
+            status: 'CANCELLED',
+            cancellationReason: reason || null,
+            cancelledBy: email,
+          },
           include: {
-            city: {
+            listing: {
               include: {
-                province: true,
+                city: {
+                  include: {
+                    province: true,
+                  },
+                },
               },
             },
+            payment: true,
+            user: { select: { email: true, fullName: true } },
           },
-        },
-        payment: true,
-      },
+        }),
+        ...(refunded
+          ? [
+              prisma.payment.update({
+                where: { bookingId },
+                data: { status: 'REFUNDED' },
+              }),
+            ]
+          : []),
+      ]);
+    } catch (dbError) {
+      if (refunded) {
+        console.error(
+          `REFUND SUCCEEDED BUT DB UPDATE FAILED — bookingId=${bookingId} needs manual reconciliation`,
+          dbError
+        );
+      }
+      throw dbError;
+    }
+
+    const recipient = isHost
+      ? cancelledBooking.user.email
+      : cancelledBooking.listing.userEmail;
+    await mailService.sendBookingCancelledEmail(recipient, {
+      listingTitle: cancelledBooking.listing.title,
+      reason,
+      cancelledByRole: isHost ? 'host' : 'guest',
     });
 
     res.status(200).json({
@@ -212,28 +303,6 @@ export const updateBooking = async (req, res) => {
       });
     }
 
-    const conflictingBookings = await prisma.booking.findMany({
-      where: {
-        listingId: booking.listingId,
-        id: { not: bookingId },
-        AND: [
-          {
-            OR: [{ status: 'CONFIRMED' }, { status: 'PENDING' }],
-          },
-          {
-            startDate: { lt: requestedEndDate },
-            endDate: { gt: requestedStartDate },
-          },
-        ],
-      },
-    });
-
-    if (conflictingBookings.length > 0) {
-      return res
-        .status(400)
-        .json({ message: 'Listing not available for the given dates' });
-    }
-
     const durationInDays = Math.ceil(
       (requestedEndDate - requestedStartDate) / (1000 * 60 * 60 * 24)
     );
@@ -241,16 +310,70 @@ export const updateBooking = async (req, res) => {
       Math.round(booking.listing.pricePerNight * durationInDays * 1.1 * 100) /
       100;
 
-    const updatedBooking = await prisma.booking.update({
-      where: { id: bookingId },
-      data: {
-        startDate: requestedStartDate,
-        endDate: requestedEndDate,
-        guests: data.guests || booking.guests,
-        totalPrice,
-      },
-      include: { listing: true, payment: true },
-    });
+    let updatedBooking;
+    try {
+      updatedBooking = await runSerializable(async (tx) => {
+        // Re-check status inside the transaction: it may have changed
+        // (cancelled/confirmed) between the read above and this point.
+        const freshBooking = await tx.booking.findUnique({
+          where: { id: bookingId },
+        });
+        if (!freshBooking || freshBooking.status !== 'PENDING') {
+          const statusError = new Error('Only pending bookings can be updated');
+          statusError.isBookingStatusConflict = true;
+          throw statusError;
+        }
+
+        const conflictingBookings = await tx.booking.findMany({
+          where: {
+            listingId: booking.listingId,
+            id: { not: bookingId },
+            AND: [
+              {
+                OR: [{ status: 'CONFIRMED' }, { status: 'PENDING' }],
+              },
+              {
+                startDate: { lt: requestedEndDate },
+                endDate: { gt: requestedStartDate },
+              },
+            ],
+          },
+        });
+
+        if (conflictingBookings.length > 0) {
+          const conflictError = new Error(
+            'Listing not available for the given dates'
+          );
+          conflictError.isBookingConflict = true;
+          throw conflictError;
+        }
+
+        return tx.booking.update({
+          where: { id: bookingId },
+          data: {
+            startDate: requestedStartDate,
+            endDate: requestedEndDate,
+            guests: data.guests || booking.guests,
+            totalPrice,
+          },
+          include: { listing: true, payment: true },
+        });
+      });
+    } catch (txError) {
+      if (txError.isBookingStatusConflict || txError.isBookingConflict) {
+        return res.status(400).json({ message: txError.message });
+      }
+      if (
+        txError instanceof Prisma.PrismaClientKnownRequestError &&
+        txError.code === 'P2034'
+      ) {
+        return res.status(409).json({
+          message:
+            'Alguien más modificó esta reserva justo ahora. Intentá de nuevo.',
+        });
+      }
+      throw txError;
+    }
 
     res.status(200).json({
       message: 'Booking updated successfully',
@@ -295,6 +418,66 @@ export const getHostBookings = async (req, res) => {
   }
 };
 
+/**
+ * Revenue/booking metrics for the authenticated host's own listings, scoped
+ * by when the booking was made (createdAt), optionally filtered to a date
+ * range and/or a single listing.
+ * @param {Object} req - The request object
+ * @param {Object} res - The response object
+ * @returns {Promise<void>}
+ */
+export const getHostBookingStats = async (req, res) => {
+  try {
+    const { email } = req.user;
+    const { startDate, endDate, listingId } = req.query;
+    const rangeStart = startDate ? new Date(startDate) : null;
+    const rangeEnd = endDate ? new Date(endDate) : null;
+
+    const baseWhere = {
+      listing: {
+        userEmail: email,
+        ...(listingId && { id: listingId }),
+      },
+      ...(rangeStart && {
+        createdAt: { gte: rangeStart, ...(rangeEnd && { lte: rangeEnd }) },
+      }),
+    };
+
+    const statusGroups = await prisma.booking.groupBy({
+      by: ['status'],
+      where: baseWhere,
+      _count: { _all: true },
+      _sum: { totalPrice: true },
+    });
+
+    const totalRevenue =
+      statusGroups.find((g) => g.status === 'CONFIRMED')?._sum.totalPrice ?? 0;
+    const bookingsByStatus = Object.fromEntries(
+      statusGroups.map((g) => [g.status, g._count._all])
+    );
+
+    const series = await prisma.$queryRaw`
+      SELECT date_trunc('day', b."createdAt")::date AS date,
+             SUM(b."totalPrice")::float AS revenue,
+             COUNT(*)::int AS bookings
+      FROM "bookings" b
+      JOIN "listings" l ON l.id = b."listingId"
+      WHERE l."userEmail" = ${email}
+        AND b.status = 'CONFIRMED'
+        ${listingId ? Prisma.sql`AND b."listingId" = ${listingId}` : Prisma.empty}
+        ${rangeStart ? Prisma.sql`AND b."createdAt" >= ${rangeStart}` : Prisma.empty}
+        ${rangeEnd ? Prisma.sql`AND b."createdAt" <= ${rangeEnd}` : Prisma.empty}
+      GROUP BY 1
+      ORDER BY 1
+    `;
+
+    res.status(200).json({ totalRevenue, bookingsByStatus, series });
+  } catch (error) {
+    console.error('Get host booking stats error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
 export const createBooking = async (req, res) => {
   try {
     const { error, data } = createBookingSchema.safeParse(req.body);
@@ -314,27 +497,6 @@ export const createBooking = async (req, res) => {
       });
     }
 
-    const conflictingBookings = await prisma.booking.findMany({
-      where: {
-        listingId: listingId,
-        AND: [
-          {
-            OR: [{ status: 'CONFIRMED' }, { status: 'PENDING' }],
-          },
-          {
-            startDate: { lt: requestedEndDate },
-            endDate: { gt: requestedStartDate },
-          },
-        ],
-      },
-    });
-
-    if (conflictingBookings.length > 0) {
-      return res
-        .status(400)
-        .json({ message: 'Listing not available for the given dates' });
-    }
-
     const [listing, user] = await Promise.all([
       prisma.listing.findFirst({ where: { id: listingId } }),
       prisma.user.findUnique({ where: { email }, select: { fullName: true } }),
@@ -349,19 +511,61 @@ export const createBooking = async (req, res) => {
     const totalPrice =
       Math.round(listing.pricePerNight * durationInDays * 1.1 * 100) / 100;
 
-    const booking = await prisma.booking.create({
-      data: {
-        listing: { connect: { id: listingId } },
-        startDate: requestedStartDate,
-        endDate: requestedEndDate,
-        guests: guests || 1,
-        totalPrice,
-        payment: { create: { amount: totalPrice } },
-        user: { connect: { email: email } },
-        status: 'PENDING',
-      },
-      include: { payment: true, listing: true },
-    });
+    let booking;
+    try {
+      booking = await runSerializable(async (tx) => {
+        const conflictingBookings = await tx.booking.findMany({
+          where: {
+            listingId: listingId,
+            AND: [
+              {
+                OR: [{ status: 'CONFIRMED' }, { status: 'PENDING' }],
+              },
+              {
+                startDate: { lt: requestedEndDate },
+                endDate: { gt: requestedStartDate },
+              },
+            ],
+          },
+        });
+
+        if (conflictingBookings.length > 0) {
+          const conflictError = new Error(
+            'Listing not available for the given dates'
+          );
+          conflictError.isBookingConflict = true;
+          throw conflictError;
+        }
+
+        return tx.booking.create({
+          data: {
+            listing: { connect: { id: listingId } },
+            startDate: requestedStartDate,
+            endDate: requestedEndDate,
+            guests: guests || 1,
+            totalPrice,
+            payment: { create: { amount: totalPrice } },
+            user: { connect: { email: email } },
+            status: 'PENDING',
+          },
+          include: { payment: true, listing: true },
+        });
+      });
+    } catch (txError) {
+      if (txError.isBookingConflict) {
+        return res.status(400).json({ message: txError.message });
+      }
+      if (
+        txError instanceof Prisma.PrismaClientKnownRequestError &&
+        txError.code === 'P2034'
+      ) {
+        return res.status(409).json({
+          message:
+            'Alguien más reservó estas fechas justo ahora. Intentá de nuevo.',
+        });
+      }
+      throw txError;
+    }
 
     let initPoint = null;
     let preferenceId = null;
@@ -419,6 +623,14 @@ export const createBooking = async (req, res) => {
             : undefined,
       });
     }
+
+    await mailService.sendBookingCreatedEmail(listing.userEmail, {
+      guestName: user?.fullName ?? email,
+      listingTitle: listing.title,
+      startDate: booking.startDate,
+      endDate: booking.endDate,
+      totalPrice: booking.totalPrice,
+    });
 
     return res.status(201).json({
       booking,

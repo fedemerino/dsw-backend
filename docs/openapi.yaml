@@ -39,7 +39,7 @@ components:
 
     Role:
       type: string
-      enum: [USER, HOST, ADMIN]
+      enum: [USER, ADMIN]
 
     User:
       type: object

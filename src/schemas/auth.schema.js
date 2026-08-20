@@ -26,3 +26,11 @@ export const resetPasswordSchema = z.object({
     .string()
     .min(8, 'Confirm new password must be at least 8 characters'),
 });
+
+export const verifyEmailSchema = z.object({
+  token: z.string().min(1, 'Token is required'),
+});
+
+export const resendVerificationSchema = z.object({
+  email: z.string().email('Invalid email address'),
+});

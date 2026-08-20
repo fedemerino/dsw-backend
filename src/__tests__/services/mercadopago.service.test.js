@@ -4,7 +4,11 @@ import { MercadoPagoService } from '../../services/mercadopago.service.js';
 const mockPaymentGet = jest.fn();
 const mockPaymentUpdate = jest.fn();
 const mockBookingUpdate = jest.fn();
+const mockBookingUpdateMany = jest.fn();
+const mockBookingFindUnique = jest.fn();
 const mockPreferenceCreate = jest.fn();
+const mockRefundTotal = jest.fn();
+const mockSendPaymentConfirmedEmail = jest.fn();
 
 jest.mock('mercadopago', () => ({
   MercadoPagoConfig: jest.fn().mockImplementation(() => ({})),
@@ -12,12 +16,25 @@ jest.mock('mercadopago', () => ({
     .fn()
     .mockImplementation(() => ({ create: mockPreferenceCreate })),
   Payment: jest.fn().mockImplementation(() => ({ get: mockPaymentGet })),
+  PaymentRefund: jest
+    .fn()
+    .mockImplementation(() => ({ total: mockRefundTotal })),
 }));
 
 jest.mock('@prisma/client', () => ({
   PrismaClient: jest.fn().mockImplementation(() => ({
     payment: { update: mockPaymentUpdate },
-    booking: { update: mockBookingUpdate },
+    booking: {
+      update: mockBookingUpdate,
+      updateMany: mockBookingUpdateMany,
+      findUnique: mockBookingFindUnique,
+    },
+  })),
+}));
+
+jest.mock('../../services/mail.service.js', () => ({
+  MailService: jest.fn().mockImplementation(() => ({
+    sendPaymentConfirmedEmail: mockSendPaymentConfirmedEmail,
   })),
 }));
 
@@ -78,6 +95,33 @@ describe('MercadoPagoService.validateWebhookSignature', () => {
     };
 
     expect(service.validateWebhookSignature(req)).toBe(false);
+  });
+});
+
+describe('MercadoPagoService.refundPayment', () => {
+  afterEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('requests a full refund for the given MercadoPago payment id', async () => {
+    mockRefundTotal.mockResolvedValue({ id: 'refund-1', status: 'approved' });
+    const service = new MercadoPagoService();
+
+    const result = await service.refundPayment('mp-payment-1');
+
+    expect(mockRefundTotal).toHaveBeenCalledWith({
+      payment_id: 'mp-payment-1',
+    });
+    expect(result).toEqual({ id: 'refund-1', status: 'approved' });
+  });
+
+  it('propagates errors from the MercadoPago API', async () => {
+    mockRefundTotal.mockRejectedValue(new Error('MercadoPago is down'));
+    const service = new MercadoPagoService();
+
+    await expect(service.refundPayment('mp-payment-1')).rejects.toThrow(
+      'MercadoPago is down'
+    );
   });
 });
 
@@ -169,6 +213,14 @@ describe('MercadoPagoService.processPaymentWebhook', () => {
       external_reference: 'payment-1',
     });
     mockPaymentUpdate.mockResolvedValue({ bookingId: 'booking-1' });
+    mockBookingUpdateMany.mockResolvedValue({ count: 1 });
+    mockBookingFindUnique.mockResolvedValue({
+      startDate: '2027-01-10',
+      endDate: '2027-01-15',
+      totalPrice: 100,
+      user: { email: 'guest@example.com' },
+      listing: { title: 'Loft' },
+    });
 
     const service = new MercadoPagoService();
     const res = mockRes();
@@ -180,11 +232,38 @@ describe('MercadoPagoService.processPaymentWebhook', () => {
       data: { status: 'APPROVED', paymentId: '999' },
       select: { bookingId: true },
     });
-    expect(mockBookingUpdate).toHaveBeenCalledWith({
-      where: { id: 'booking-1' },
+    expect(mockBookingUpdateMany).toHaveBeenCalledWith({
+      where: { id: 'booking-1', status: { not: 'CANCELLED' } },
       data: { status: 'CONFIRMED' },
     });
+    expect(mockSendPaymentConfirmedEmail).toHaveBeenCalledWith(
+      'guest@example.com',
+      expect.objectContaining({ listingTitle: 'Loft' })
+    );
     expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it('does not resurrect a booking the auto-cancel job already cancelled', async () => {
+    mockPaymentGet.mockResolvedValue({
+      id: 999,
+      status: 'approved',
+      external_reference: 'payment-1',
+    });
+    mockPaymentUpdate.mockResolvedValue({ bookingId: 'booking-1' });
+    mockBookingUpdateMany.mockResolvedValue({ count: 0 });
+    const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
+
+    const service = new MercadoPagoService();
+    const res = mockRes();
+
+    await service.processPaymentWebhook('999', res);
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining('already CANCELLED')
+    );
+    expect(res.status).toHaveBeenCalledWith(200);
+
+    consoleSpy.mockRestore();
   });
 
   it('cancels the booking when the payment is rejected', async () => {

@@ -6,7 +6,7 @@ TP de la materia Desarrollo de Software (DSW) — ver [`proposal.md`](./proposal
 
 ## Stack
 
-Node.js + Express 5 · PostgreSQL + Prisma · JWT (access + refresh) con roles (`USER`/`HOST`/`ADMIN`) · Zod · MercadoPago · Cloudinary · Jest + Supertest.
+Node.js + Express 5 · PostgreSQL + Prisma · JWT (access + refresh) con roles (`USER`/`ADMIN`) · Zod · MercadoPago · Cloudinary · Jest + Supertest.
 
 ## Quick start
 

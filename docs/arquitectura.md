@@ -37,8 +37,7 @@ middlewares/    →  auth.middleware.js (JWT + roles)
 
 | Rol | Se asigna | Puede |
 |---|---|---|
-| `USER` | Automático al registrarse | CRUD de sus propias publicaciones, reservas, reseñas, favoritos |
-| `HOST` | Manual (no hay endpoint de auto-asignación; cualquier `USER` ya puede publicar) | Igual que `USER` — el rol existe para diferenciar semánticamente en el modelo, no restringe rutas hoy |
+| `USER` | Automático al registrarse | CRUD de sus propias publicaciones, reservas, reseñas, favoritos — cualquier `USER` ya puede publicar alojamientos, no existe un rol `HOST` separado |
 | `ADMIN` | Manual / seed (`admin@reservar.com`) | Todo lo anterior + `GET /api/users`, `DELETE /api/users/:email` |
 
 La protección de rutas es explícita por middleware (`authenticateToken`, `requireAdmin`), no implícita — ver `docs/api.md` para el detalle de cada endpoint.
