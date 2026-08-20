@@ -1,5 +1,9 @@
 import { PrismaClient } from '@prisma/client';
 import { MercadoPagoService } from '../services/mercadopago.service.js';
+import {
+  createBookingSchema,
+  updateBookingSchema,
+} from '../schemas/bookings.schema.js';
 
 const prisma = new PrismaClient();
 const mercadoPagoService = new MercadoPagoService();
@@ -162,6 +166,102 @@ export const cancelBooking = async (req, res) => {
   }
 };
 
+/**
+ * Updates a pending booking's dates/guests (owner only). Confirmed or
+ * cancelled bookings cannot be modified - cancel and create a new one instead.
+ * @param {Object} req - The request object
+ * @param {Object} res - The response object
+ * @returns {Promise<void>}
+ */
+export const updateBooking = async (req, res) => {
+  try {
+    const { error, data } = updateBookingSchema.safeParse(req.body);
+    if (error) {
+      return res.status(400).json({ message: error.message });
+    }
+    const { bookingId } = req.params;
+    const { email } = req.user;
+
+    const booking = await prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: { listing: true },
+    });
+
+    if (!booking) {
+      return res.status(404).json({ message: 'Booking not found' });
+    }
+
+    if (booking.userEmail !== email) {
+      return res.status(403).json({
+        message: 'You do not have permission to update this booking',
+      });
+    }
+
+    if (booking.status !== 'PENDING') {
+      return res.status(400).json({
+        message: 'Only pending bookings can be updated',
+      });
+    }
+
+    const requestedStartDate = new Date(data.startDate);
+    const requestedEndDate = new Date(data.endDate);
+
+    if (requestedStartDate >= requestedEndDate) {
+      return res.status(400).json({
+        message: 'End date must be after start date',
+      });
+    }
+
+    const conflictingBookings = await prisma.booking.findMany({
+      where: {
+        listingId: booking.listingId,
+        id: { not: bookingId },
+        AND: [
+          {
+            OR: [{ status: 'CONFIRMED' }, { status: 'PENDING' }],
+          },
+          {
+            startDate: { lt: requestedEndDate },
+            endDate: { gt: requestedStartDate },
+          },
+        ],
+      },
+    });
+
+    if (conflictingBookings.length > 0) {
+      return res
+        .status(400)
+        .json({ message: 'Listing not available for the given dates' });
+    }
+
+    const durationInDays = Math.ceil(
+      (requestedEndDate - requestedStartDate) / (1000 * 60 * 60 * 24)
+    );
+    const totalPrice =
+      Math.round(booking.listing.pricePerNight * durationInDays * 1.1 * 100) /
+      100;
+
+    const updatedBooking = await prisma.booking.update({
+      where: { id: bookingId },
+      data: {
+        startDate: requestedStartDate,
+        endDate: requestedEndDate,
+        guests: data.guests || booking.guests,
+        totalPrice,
+      },
+      include: { listing: true, payment: true },
+    });
+
+    res.status(200).json({
+      message: 'Booking updated successfully',
+      booking: updatedBooking,
+    });
+  } catch (error) {
+    console.error('Update booking error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
 export const getHostBookings = async (req, res) => {
   try {
     const { email } = req.user;
@@ -197,7 +297,11 @@ export const getHostBookings = async (req, res) => {
 
 export const createBooking = async (req, res) => {
   try {
-    const { listingId, startDate, endDate, guests } = req.body;
+    const { error, data } = createBookingSchema.safeParse(req.body);
+    if (error) {
+      return res.status(400).json({ message: error.message });
+    }
+    const { listingId, startDate, endDate, guests } = data;
     const { email } = req.user;
 
     // verify if the listing is available for the given dates

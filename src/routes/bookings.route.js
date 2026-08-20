@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import {
   createBooking,
+  updateBooking,
   getUserBookingsCount,
   getUserBookings,
   cancelBooking,
@@ -18,6 +19,8 @@ router.get('/user/:userEmail/count', authenticateToken, getUserBookingsCount);
 router.get('/user/:userEmail', authenticateToken, getUserBookings);
 // Create a new booking
 router.post('/', authenticateToken, createBooking);
+// Update a pending booking's dates/guests
+router.put('/:bookingId', authenticateToken, updateBooking);
 // Cancel a booking
 router.delete('/:bookingId', authenticateToken, cancelBooking);
 

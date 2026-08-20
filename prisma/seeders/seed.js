@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import bcrypt from 'bcrypt';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -7,6 +8,22 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const prisma = new PrismaClient();
+
+/**
+ * Reads the admin password from --password=<value> / --password <value>,
+ * falling back to the ADMIN_PASSWORD env var. Returns null if neither is set.
+ * @returns {string | null}
+ */
+function getAdminPassword() {
+  const args = process.argv.slice(2);
+  const eqArg = args.find((arg) => arg.startsWith('--password='));
+  if (eqArg) return eqArg.slice('--password='.length);
+
+  const flagIndex = args.indexOf('--password');
+  if (flagIndex !== -1 && args[flagIndex + 1]) return args[flagIndex + 1];
+
+  return process.env.ADMIN_PASSWORD || null;
+}
 
 // Import JSON data
 const provincesData = JSON.parse(
@@ -97,28 +114,42 @@ async function main() {
     });
   }
 
-  const user = {
-    email: 'admin@reservar.com',
-    fullName: 'Admin User',
-    phoneNumber: '1234567890',
-    password: '$2b$12$cadvd.9S9SDz0f9JuHAnc.vbOkOBQJZMlosYpzrol.Dl6PuH4DH2S',
-    active: true,
-    roles: {
-      create: {
-        role: 'ADMIN',
-      },
-    },
-  };
-  const existingUser = await prisma.user.findUnique({
-    where: { email: user.email },
+  const adminEmail = 'admin@reservar.com';
+  const existingAdmin = await prisma.user.findUnique({
+    where: { email: adminEmail },
   });
-  if (!existingUser) {
+
+  if (!existingAdmin) {
+    const adminPassword = getAdminPassword();
+    if (!adminPassword) {
+      throw new Error(
+        'No se indicó contraseña para el admin. Corré: npm run seed -- --password=<contraseña> (o definí ADMIN_PASSWORD en el entorno).'
+      );
+    }
+    if (adminPassword.length < 8) {
+      throw new Error(
+        'La contraseña del admin debe tener al menos 8 caracteres.'
+      );
+    }
+
+    const hashedPassword = await bcrypt.hash(adminPassword, 12);
     await prisma.user.create({
-      data: user,
+      data: {
+        email: adminEmail,
+        fullName: 'Admin User',
+        phoneNumber: '1234567890',
+        password: hashedPassword,
+        active: true,
+        roles: {
+          create: {
+            role: 'ADMIN',
+          },
+        },
+      },
     });
-    console.log(`✅ Created admin user with email: ${user.email}`);
+    console.log(`✅ Created admin user with email: ${adminEmail}`);
   } else {
-    console.log(`ℹ️ Admin user with email ${user.email} already exists`);
+    console.log(`ℹ️ Admin user with email ${adminEmail} already exists`);
   }
   console.log(`✅ Created ${amenitiesData.length} amenities`);
   console.log('🎉 Database seeding completed successfully!');

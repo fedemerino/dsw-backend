@@ -146,6 +146,7 @@ export const login = async (req, res) => {
         fullName: true,
         phoneNumber: true,
         active: true,
+        blocked: true,
         roles: true,
         password: true,
       },
@@ -154,6 +155,12 @@ export const login = async (req, res) => {
     if (!user || !user.active) {
       return res.status(401).json({
         error: 'User not found or inactive',
+      });
+    }
+
+    if (user.blocked) {
+      return res.status(403).json({
+        error: 'This account has been blocked by an administrator',
       });
     }
 
@@ -225,11 +232,12 @@ export const refreshToken = async (req, res) => {
         fullName: true,
         phoneNumber: true,
         active: true,
+        blocked: true,
         roles: true,
       },
     });
 
-    if (!user || !user.active) {
+    if (!user || !user.active || user.blocked) {
       return res.status(401).json({
         error: 'User not found or inactive',
       });

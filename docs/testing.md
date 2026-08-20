@@ -40,60 +40,74 @@ npm run test-coverage  # todos los tests + reporte de cobertura
 
 ## Evidencia de ejecución (`npm run test-coverage`)
 
-Corrida real sobre `bookings_test`, 2026-07-25:
+Corrida real sobre `bookings_test`, 2026-08-20:
 
 ```
 > bookings-backend@1.0.0 test-coverage
 > jest --coverage
 
-PASS src/app.test.js
+PASS src/__tests__/app.test.js
 PASS src/__tests__/integration/bookings.integration.test.js
 PASS src/__tests__/integration/auth.integration.test.js
 (+ 18 suites más: controllers, services, middlewares, schemas, routes)
 --------------------------|---------|----------|---------|---------|--------------------------
 File                      | % Stmts | % Branch | % Funcs | % Lines | Uncovered Line #s
 --------------------------|---------|----------|---------|---------|--------------------------
-All files                 |   98.04 |     85.9 |   96.15 |   98.75 |
+All files                 |   97.74 |     86.4 |   96.34 |   98.36 |
  src                      |     100 |       50 |     100 |     100 |
-  app.js                  |     100 |       50 |     100 |     100 | 20
- src/config               |      75 |       75 |     100 |      75 |
+  app.js                  |     100 |       50 |     100 |     100 | 22
+ src/config               |   83.33 |       75 |     100 |   83.33 |
   mail.config.js          |      75 |       75 |     100 |      75 | 6
- src/controllers          |   98.08 |    86.22 |   96.29 |    98.7 |
+  swagger.js              |     100 |      100 |     100 |     100 |
+ src/controllers          |   97.63 |    86.89 |   96.55 |   98.15 |
   amenities.controller.js |     100 |      100 |     100 |     100 |
   auth.controller.js      |     100 |      100 |     100 |     100 |
-  bookings.controller.js  |   96.59 |    66.66 |    87.5 |     100 | 246-281,291-312
-  cities.controller.js    |     100 |    81.25 |     100 |     100 | 31,56,100
+  bookings.controller.js  |   95.76 |    69.73 |   88.88 |   98.24 | 180,302
+  cities.controller.js    |   97.05 |     87.5 |     100 |   96.87 | 62
   files.controller.js     |     100 |      100 |     100 |     100 |
   listings.controller.js  |   95.83 |    93.54 |   95.23 |   95.77 | 191-197
   provinces.controller.js |     100 |      100 |     100 |     100 |
   reviews.controller.js   |     100 |      100 |     100 |     100 |
-  users.controller.js     |     100 |      100 |     100 |     100 |
+  users.controller.js     |   98.46 |    94.44 |     100 |   98.43 | 45
  src/middlewares          |   95.45 |    91.66 |     100 |   95.23 |
   auth.middleware.js      |   95.45 |    91.66 |     100 |   95.23 | 46
  src/routes               |     100 |      100 |     100 |     100 |
   (los 10 routers)        |     100 |      100 |     100 |     100 |
  src/schemas              |     100 |      100 |     100 |     100 |
   auth.schema.js          |     100 |      100 |     100 |     100 |
+  bookings.schema.js      |     100 |      100 |     100 |     100 |
+  cities.schema.js        |     100 |      100 |     100 |     100 |
   listings.schema.js      |     100 |      100 |     100 |     100 |
   review.schema.js        |     100 |      100 |     100 |     100 |
+  users.schema.js         |     100 |      100 |     100 |     100 |
  src/services             |   97.14 |    85.71 |    90.9 |     100 |
   cloudinary.service.js   |     100 |      100 |     100 |     100 |
   mail.service.js         |     100 |      100 |     100 |     100 |
-  mercadopago.service.js  |   96.55 |       84 |   85.71 |     100 | 44,83-87,105,137-148,154
+  mercadopago.service.js  |   96.55 |       84 |   85.71 |     100 | 50,89-93,111,143-154,160
  src/utils                |     100 |    85.71 |     100 |     100 |
-  utils.js                |     100 |    85.71 |     100 |     100 | 16,21,51-55
+  utils.js                |     100 |    85.71 |     100 |     100 | 13,18,48-52
 --------------------------|---------|----------|---------|---------|--------------------------
 
 Test Suites: 21 passed, 21 total
-Tests:       185 passed, 185 total
+Tests:       207 passed, 207 total
 Snapshots:   0 total
-Time:        ~5 s
+Time:        ~8 s
 Ran all test suites.
 ```
 
-185 tests, 21 suites, todos en verde. `npm run lint` también corre limpio (0 errores). El `coverageThreshold` de `jest.config.js` está fijado unos puntos por debajo de estos números (branches 80%, functions 90%, lines 95%, statements 95%) como piso de no-regresión real — si un cambio futuro baja la cobertura de forma significativa, `npm run test-coverage` va a fallar (y el job de CI también, ver `docs/deployment.md`).
+207 tests, 21 suites, todos en verde. `npm run lint` también corre limpio (0 errores). El `coverageThreshold` de `jest.config.js` está fijado unos puntos por debajo de estos números (branches 80%, functions 90%, lines 95%, statements 95%) como piso de no-regresión real — si un cambio futuro baja la cobertura de forma significativa, `npm run test-coverage` va a fallar (y el job de CI también, ver `docs/deployment.md`).
 
 Lo que queda sin cubrir son en su mayoría ramas defensivas de bajo riesgo: el branch `origin` del CORS por defecto en `app.js`, el `throw` de `mail.config.js` si faltan credenciales de Gmail (falla al bootear, no en runtime), y algunos detalles de logging opcional en `mercadopago.service.js` (`mpError?.cause`, `mpError?.body`).
+
+### Verificación manual del upgrade a `mercadopago` v3
+
+Los tests unitarios/integración mockean el SDK de MercadoPago a nivel de módulo (`jest.mock('mercadopago', ...)`), así que no detectan si cambió la forma real en que el paquete expone `MercadoPagoConfig`/`Preference`/`Payment` entre versiones mayores. Al actualizar `mercadopago` de `2.13.0` a `3.4.0` (ver "Dependencias" abajo) se hizo además una prueba manual contra la API real de MercadoPago (credenciales de test): se creó una reserva real vía `POST /api/bookings`, se obtuvo un `initPoint` válido y se abrió en el navegador — el checkout de MercadoPago cargó correctamente con el ítem y el monto esperados. Confirma que el cambio de versión no rompió la integración real.
+
+## Dependencias
+
+`npm audit --omit=dev --audit-level=high` está en 0 vulnerabilidades (chequeado 2026-08-20). Dos cambios para llegar ahí:
+- `mercadopago` `2.13.0` → `3.4.0` (major — arrastraba una versión vulnerable de `uuid`). Ver la verificación manual arriba.
+- `prisma` (el CLI, devDependency) `^6.17.1` → `^6.12.0` (arrastraba una versión de `@prisma/config`/`deepmerge-ts` vulnerable). No afecta a `@prisma/client` (que sigue en `^6.17.1`, sin cambios) ni a las migraciones — verificado con `npx prisma generate` + `npx prisma migrate deploy` + la suite completa, todo en verde.
 
 ## Bugs reales encontrados escribiendo estos tests
 

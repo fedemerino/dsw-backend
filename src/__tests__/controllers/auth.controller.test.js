@@ -169,6 +169,29 @@ describe('login', () => {
     expect(res.status).toHaveBeenCalledWith(401);
   });
 
+  it('rejects a blocked user', async () => {
+    const hashed = await bcrypt.hash('password123', 4);
+    mockUserFindUnique.mockResolvedValue({
+      email: 'blocked@example.com',
+      active: true,
+      blocked: true,
+      roles: [{ role: 'USER' }],
+      password: hashed,
+    });
+
+    const req = {
+      body: { email: 'blocked@example.com', password: 'password123' },
+    };
+    const res = mockRes();
+
+    await login(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json).toHaveBeenCalledWith({
+      error: 'This account has been blocked by an administrator',
+    });
+  });
+
   it('rejects an invalid password', async () => {
     const hashed = await bcrypt.hash('correct-password', 4);
     mockUserFindUnique.mockResolvedValue({
@@ -247,6 +270,26 @@ describe('refreshToken', () => {
     expect(res.json).toHaveBeenCalledWith({
       error: 'User not found or inactive',
     });
+  });
+
+  it('rejects a blocked user', async () => {
+    const token = jwt.sign(
+      { email: 'user@example.com', type: 'refresh' },
+      process.env.JWT_REFRESH_SECRET
+    );
+    mockRefreshTokenFindFirst.mockResolvedValue({ token });
+    mockUserFindUnique.mockResolvedValue({
+      email: 'user@example.com',
+      active: true,
+      blocked: true,
+    });
+
+    const req = { cookies: { refreshToken: token } };
+    const res = mockRes();
+
+    await refreshTokenHandler(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(401);
   });
 
   it('rejects an invalid refresh token', async () => {

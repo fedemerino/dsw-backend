@@ -16,7 +16,8 @@
     "migrate:up": "prisma migrate dev",
     "migrate:down": "prisma migrate dev --to-last",
     "migrate:reset": "prisma migrate reset --skip-seed",
-    "seed": "node prisma/seeders/seed.js"
+    "seed": "node prisma/seeders/seed.js",
+    "setup": "node scripts/setup.js"
   },
   "prisma": {
     "seed": "node prisma/seeders/seed.js"
@@ -38,7 +39,7 @@
     "jest-environment-node": "^30.0.2",
     "nodemon": "^3.1.10",
     "prettier": "3.6.2",
-    "prisma": "^6.17.1",
+    "prisma": "^6.12.0",
     "supertest": "^7.1.1"
   },
   "dependencies": {
@@ -48,10 +49,12 @@
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "express": "^5.1.0",
+    "js-yaml": "^5.3.0",
     "jsonwebtoken": "^9.0.2",
-    "mercadopago": "^2.12.0",
+    "mercadopago": "^3.4.0",
     "moment": "^2.30.1",
     "nodemailer": "^9.0.3",
+    "swagger-ui-express": "^5.0.1",
     "zod": "^4.1.11"
   }
 }

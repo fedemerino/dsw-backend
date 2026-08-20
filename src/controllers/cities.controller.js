@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { citiesQuerySchema } from '../schemas/cities.schema.js';
 
 const prisma = new PrismaClient();
 
@@ -9,7 +10,11 @@ const prisma = new PrismaClient();
  * @returns {Object} The cities
  */
 export const getCities = async (req, res) => {
-  const { search, limit } = req.query;
+  const { error, data } = citiesQuerySchema.safeParse(req.query);
+  if (error) {
+    return res.status(400).json({ error: error.message });
+  }
+  const { search, limit } = data;
   try {
     const cities = await prisma.city.findMany({
       where: {
@@ -28,7 +33,7 @@ export const getCities = async (req, res) => {
       orderBy: {
         name: 'asc',
       },
-      take: Math.min(parseInt(limit || '25', 10) || 25, 100),
+      take: limit ?? 25,
     });
     const formatted = cities.map((city) => ({
       id: city.id,
@@ -52,8 +57,12 @@ export const getCities = async (req, res) => {
 export const getCitiesByProvinceId = async (req, res) => {
   try {
     const { provinceId } = req.params;
-    const { search, limit } = req.query;
-    const take = Math.min(parseInt(limit || '20', 10) || 20, 100); // cap at 100
+    const { error, data } = citiesQuerySchema.safeParse(req.query);
+    if (error) {
+      return res.status(400).json({ error: error.message });
+    }
+    const { search, limit } = data;
+    const take = limit ?? 20;
 
     const where = {
       provinceId,

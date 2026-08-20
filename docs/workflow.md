@@ -1,32 +1,15 @@
-# Flujo de trabajo con Git + Jira
+# Flujo de trabajo con Git
 
-1. Ir a la rama `master`:
-   ```
-   git checkout master
-   ```
-2. Asegurarnos de tener los últimos cambios del proyecto
+Proyecto individual (ver [`proposal.md`](../proposal.md)): sin equipo, sin minutas de reunión ni tablero de Jira/tracking formal. El seguimiento real del desarrollo es el historial de commits de `git log`.
 
-```
-   git pull origin master
-```
+En una primera etapa se usó una rama por feature con nombre de tarjeta (`DSW-14`, `DSW-17`) y Pull Request hacia `master` (ver `PR #1` en el historial). En el resto del desarrollo, al ser un solo desarrollador, se trabajó con commits incrementales directo sobre `master`:
 
-3. Crear una nueva rama con el nombre de la tarjeta de Jira (ejemplo: DSW-14):
-
-```
-   git checkout -b DSW-14
+```bash
+git pull origin master
+# ...cambios...
+git add <archivos>
+git commit -m "descripción de los cambios"
+git push origin master
 ```
 
-4. Realizar los cambios necesarios en el código y commitear los cambios
-
-```
-   git add .
-   git commit -m "descripcion de los cambios"
-```
-
-5. Subir la rama al repositorio
-
-```
-git push origin DSW-14
-```
-
-6. Entrar al repositorio en GitHub y crear un Pull Request desde tu rama (ej: DSW-14) a master.
+Para features más grandes o riesgosas se sigue usando una rama corta (`git checkout -b <nombre>`) que se mergea a `master` una vez probada localmente, para poder revertir fácil si algo sale mal.

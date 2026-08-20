@@ -88,7 +88,7 @@ Correr las migraciones y (una sola vez) el seed:
 
 ```bash
 DATABASE_URL="<la de .env.prod>" npx prisma migrate deploy
-DATABASE_URL="<la de .env.prod>" npm run seed
+DATABASE_URL="<la de .env.prod>" npm run seed -- --password=<contraseña-del-admin-en-prod>
 ```
 
 Levantar el proceso con PM2 usando `ecosystem.config.cjs` (en la raíz del repo):

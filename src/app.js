@@ -1,6 +1,8 @@
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
+import swaggerUi from 'swagger-ui-express';
+import { swaggerDocument } from './config/swagger.js';
 import usersRouter from './routes/users.route.js';
 import listingsRouter from './routes/listings.route.js';
 import authRouter from './routes/auth.route.js';
@@ -25,6 +27,9 @@ app.use(
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
+
+// API docs (Swagger UI)
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
 // Routes
 app.use('/api/auth', authRouter);

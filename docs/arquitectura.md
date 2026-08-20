@@ -74,3 +74,4 @@ El webhook siempre responde `200` (salvo firma inválida) porque MercadoPago rei
 | `MERCADOPAGO_WEBHOOK_SECRET` | Validación de firma del webhook (opcional pero recomendado) |
 | `CLOUDINARY_CLOUD_NAME` / `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` | Firma de uploads de imágenes |
 | `GOOGLE_APP_USER` / `GOOGLE_APP_PASSWORD` | Cuenta de Gmail usada por Nodemailer para el mail de recuperación de contraseña |
+| `EMAIL_FROM` | Remitente que figura en ese mail (normalmente igual a `GOOGLE_APP_USER`) |

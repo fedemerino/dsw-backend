@@ -6,6 +6,7 @@ import {
   cancelBooking,
   getHostBookings,
   createBooking,
+  updateBooking,
 } from '../../controllers/bookings.controller.js';
 
 jest.mock('@prisma/client', () => ({
@@ -398,6 +399,122 @@ describe('createBooking', () => {
     const res = mockRes();
 
     await createBooking({ ...baseReq }, res);
+
+    expect(res.status).toHaveBeenCalledWith(500);
+  });
+});
+
+describe('updateBooking', () => {
+  const baseReq = {
+    params: { bookingId: 'b1' },
+    body: {
+      startDate: '2027-02-10T00:00:00.000Z',
+      endDate: '2027-02-15T00:00:00.000Z',
+      guests: 3,
+    },
+    user: { email: 'user@example.com' },
+  };
+
+  it('updates a pending booking owned by the requester', async () => {
+    bookingMock.findUnique.mockResolvedValue({
+      id: 'b1',
+      userEmail: 'user@example.com',
+      status: 'PENDING',
+      listingId: 'listing-1',
+      guests: 2,
+      listing: { pricePerNight: 100 },
+    });
+    bookingMock.findMany.mockResolvedValue([]);
+    bookingMock.update.mockResolvedValue({ id: 'b1', status: 'PENDING' });
+
+    const res = mockRes();
+
+    await updateBooking({ ...baseReq }, res);
+
+    expect(bookingMock.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'b1' },
+        data: expect.objectContaining({ guests: 3 }),
+      })
+    );
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it('returns 404 when the booking does not exist', async () => {
+    bookingMock.findUnique.mockResolvedValue(null);
+    const res = mockRes();
+
+    await updateBooking({ ...baseReq }, res);
+
+    expect(res.status).toHaveBeenCalledWith(404);
+  });
+
+  it('rejects updating someone else’s booking', async () => {
+    bookingMock.findUnique.mockResolvedValue({
+      id: 'b1',
+      userEmail: 'other@example.com',
+      status: 'PENDING',
+    });
+    const res = mockRes();
+
+    await updateBooking({ ...baseReq }, res);
+
+    expect(res.status).toHaveBeenCalledWith(403);
+  });
+
+  it('rejects updating a booking that is not pending', async () => {
+    bookingMock.findUnique.mockResolvedValue({
+      id: 'b1',
+      userEmail: 'user@example.com',
+      status: 'CONFIRMED',
+    });
+    const res = mockRes();
+
+    await updateBooking({ ...baseReq }, res);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+  });
+
+  it('rejects when endDate is not after startDate', async () => {
+    bookingMock.findUnique.mockResolvedValue({
+      id: 'b1',
+      userEmail: 'user@example.com',
+      status: 'PENDING',
+      listing: { pricePerNight: 100 },
+    });
+    const req = {
+      ...baseReq,
+      body: { startDate: '2027-02-15', endDate: '2027-02-10' },
+    };
+    const res = mockRes();
+
+    await updateBooking(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+  });
+
+  it('rejects when the new dates conflict with another booking', async () => {
+    bookingMock.findUnique.mockResolvedValue({
+      id: 'b1',
+      userEmail: 'user@example.com',
+      status: 'PENDING',
+      listingId: 'listing-1',
+      listing: { pricePerNight: 100 },
+    });
+    bookingMock.findMany.mockResolvedValue([{ id: 'other-booking' }]);
+    const res = mockRes();
+
+    await updateBooking({ ...baseReq }, res);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(bookingMock.update).not.toHaveBeenCalled();
+  });
+
+  it('returns 500 on an unexpected database error', async () => {
+    bookingMock.findUnique.mockRejectedValue(new Error('db down'));
+    const res = mockRes();
+
+    await updateBooking({ ...baseReq }, res);
 
     expect(res.status).toHaveBeenCalledWith(500);
   });

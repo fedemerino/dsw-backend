@@ -16,22 +16,26 @@ npm run format       # Format with Prettier
 npm run migrate:new -- <name>   # Create a new migration
 npm run migrate:up               # Apply pending migrations
 npm run migrate:reset            # Reset DB (drops all data, skips seed)
-npm run seed                     # Run seed script
+npm run seed -- --password=<pwd> # Run seed script (password required the first time, to create the admin user)
+
+# One-shot local setup: installs deps, starts Docker+Postgres, migrates, seeds
+# (admin password defaults to 123456789, override with SETUP_ADMIN_PASSWORD), starts the dev server
+npm run setup
 ```
 
 ## Environment Variables
 
-Required in `.env`:
+Copy `.env.example` to `.env` and fill in real values. Required:
 - `NODE_ENV` — `development` / `production` / `test`; controls the `secure` flag on cookies and how much error detail responses expose
 - `DATABASE_URL` — PostgreSQL connection string
 - `JWT_SECRET` / `JWT_REFRESH_SECRET` — token signing secrets
-- `FRONTEND_URL` — used for MercadoPago redirect URLs
-- `BACKEND_URL` — used for MercadoPago webhook `notification_url`
+- `FRONTEND_URL` — used for CORS, MercadoPago redirect URLs, and the password-reset email link
+- `BACKEND_URL` — used for MercadoPago webhook `notification_url` (needs to be a public tunnel, e.g. ngrok, in local dev)
 - `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` — image uploads
 - `MERCADOPAGO_ACCESS_TOKEN`, `MERCADOPAGO_WEBHOOK_SECRET` — payment processing
-- `GOOGLE_APP_USER`, `GOOGLE_APP_PASSWORD` — nodemailer for password reset emails
+- `GOOGLE_APP_USER`, `GOOGLE_APP_PASSWORD`, `EMAIL_FROM` — nodemailer for password reset emails
 
-`.env.prod` is a production template (placeholders, no real secrets) — see `docs/deployment.md`.
+`MERCADOPAGO_PUBLIC_KEY` and `CLOUDINARY_URL` may appear in `.env` but are **not** read by the backend (the public key belongs to the frontend). `.env.prod` is a production template (placeholders, no real secrets) — see `docs/deployment.md`.
 
 ## Architecture
 

@@ -43,16 +43,26 @@ describe('getCities', () => {
     ]);
   });
 
-  it('caps the limit at 100', async () => {
+  it('defaults to a limit of 25 when none is given', async () => {
     mockFindMany.mockResolvedValue([]);
-    const req = { query: { limit: '500' } };
+    const req = { query: {} };
     const res = mockRes();
 
     await getCities(req, res);
 
     expect(mockFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({ take: 100 })
+      expect.objectContaining({ take: 25 })
     );
+  });
+
+  it('rejects a limit greater than 100', async () => {
+    const req = { query: { limit: '500' } };
+    const res = mockRes();
+
+    await getCities(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(mockFindMany).not.toHaveBeenCalled();
   });
 
   it('returns 500 on a database error', async () => {

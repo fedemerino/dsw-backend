@@ -4,6 +4,8 @@ import {
   updateUser,
   getUserByEmail,
   deleteUser,
+  blockUser,
+  unblockUser,
 } from '../../controllers/users.controller.js';
 
 jest.mock('@prisma/client', () => ({
@@ -194,6 +196,125 @@ describe('deleteUser', () => {
     const res = mockRes();
 
     await deleteUser(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(500);
+  });
+});
+
+describe('blockUser', () => {
+  it('lets an admin block another user', async () => {
+    mockFindUnique.mockResolvedValue({ email: 'user@example.com' });
+    mockUpdate.mockResolvedValue({
+      email: 'user@example.com',
+      blocked: true,
+    });
+
+    const req = {
+      params: { email: 'user@example.com' },
+      user: { email: 'admin@example.com', roles: [{ role: 'ADMIN' }] },
+    };
+    const res = mockRes();
+
+    await blockUser(req, res);
+
+    expect(mockUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { email: 'user@example.com' },
+        data: { blocked: true },
+      })
+    );
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it('rejects an admin trying to block themselves', async () => {
+    const req = {
+      params: { email: 'admin@example.com' },
+      user: { email: 'admin@example.com', roles: [{ role: 'ADMIN' }] },
+    };
+    const res = mockRes();
+
+    await blockUser(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(mockFindUnique).not.toHaveBeenCalled();
+  });
+
+  it('returns 404 when the user does not exist', async () => {
+    mockFindUnique.mockResolvedValue(null);
+
+    const req = {
+      params: { email: 'ghost@example.com' },
+      user: { email: 'admin@example.com', roles: [{ role: 'ADMIN' }] },
+    };
+    const res = mockRes();
+
+    await blockUser(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(404);
+  });
+
+  it('returns 500 on a database error', async () => {
+    mockFindUnique.mockRejectedValue(new Error('db down'));
+    const req = {
+      params: { email: 'user@example.com' },
+      user: { email: 'admin@example.com', roles: [{ role: 'ADMIN' }] },
+    };
+    const res = mockRes();
+
+    await blockUser(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(500);
+  });
+});
+
+describe('unblockUser', () => {
+  it('lets an admin unblock a user', async () => {
+    mockFindUnique.mockResolvedValue({ email: 'user@example.com' });
+    mockUpdate.mockResolvedValue({
+      email: 'user@example.com',
+      blocked: false,
+    });
+
+    const req = {
+      params: { email: 'user@example.com' },
+      user: { email: 'admin@example.com', roles: [{ role: 'ADMIN' }] },
+    };
+    const res = mockRes();
+
+    await unblockUser(req, res);
+
+    expect(mockUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { email: 'user@example.com' },
+        data: { blocked: false },
+      })
+    );
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it('returns 404 when the user does not exist', async () => {
+    mockFindUnique.mockResolvedValue(null);
+
+    const req = {
+      params: { email: 'ghost@example.com' },
+      user: { email: 'admin@example.com', roles: [{ role: 'ADMIN' }] },
+    };
+    const res = mockRes();
+
+    await unblockUser(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(404);
+  });
+
+  it('returns 500 on a database error', async () => {
+    mockFindUnique.mockRejectedValue(new Error('db down'));
+    const req = {
+      params: { email: 'user@example.com' },
+      user: { email: 'admin@example.com', roles: [{ role: 'ADMIN' }] },
+    };
+    const res = mockRes();
+
+    await unblockUser(req, res);
 
     expect(res.status).toHaveBeenCalledWith(500);
   });

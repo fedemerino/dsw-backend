@@ -1,0 +1,951 @@
+openapi: 3.0.3
+info:
+  title: Reservar API
+  version: '1.0.0'
+  description: >
+    API REST para una plataforma de alquiler temporario de alojamientos:
+    publicaciones, reservas, reseñas, favoritos y pagos vía MercadoPago.
+    Ver `docs/arquitectura.md` y `docs/api.md` para más detalle narrativo.
+servers:
+  - url: http://localhost:3000
+    description: Desarrollo local
+tags:
+  - name: Auth
+  - name: Users
+  - name: Listings
+  - name: Bookings
+  - name: Reviews
+  - name: Provinces
+  - name: Cities
+  - name: Amenities
+  - name: Files
+  - name: MercadoPago
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+
+    Role:
+      type: string
+      enum: [USER, HOST, ADMIN]
+
+    User:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        fullName:
+          type: string
+        phoneNumber:
+          type: string
+          nullable: true
+        avatarUrl:
+          type: string
+          nullable: true
+        active:
+          type: boolean
+        blocked:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        roles:
+          type: array
+          items:
+            type: object
+            properties:
+              role:
+                $ref: '#/components/schemas/Role'
+
+    Listing:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+        address:
+          type: string
+        pricePerNight:
+          type: number
+        propertyType:
+          type: string
+        rooms:
+          type: integer
+        bathrooms:
+          type: integer
+        beds:
+          type: integer
+        petFriendly:
+          type: boolean
+        maxGuests:
+          type: integer
+        featured:
+          type: boolean
+        cityId:
+          type: string
+          format: uuid
+        userEmail:
+          type: string
+          format: email
+
+    BookingStatus:
+      type: string
+      enum: [PENDING, CONFIRMED, CANCELLED]
+
+    Booking:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        guests:
+          type: integer
+        totalPrice:
+          type: number
+        status:
+          $ref: '#/components/schemas/BookingStatus'
+        startDate:
+          type: string
+          format: date-time
+        endDate:
+          type: string
+          format: date-time
+        listingId:
+          type: string
+          format: uuid
+        userEmail:
+          type: string
+          format: email
+
+    Review:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+        listingId:
+          type: string
+          format: uuid
+        userEmail:
+          type: string
+          format: email
+
+    Province:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+
+    City:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        province:
+          type: string
+          nullable: true
+
+    Amenity:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+
+security:
+  - bearerAuth: []
+
+paths:
+  /api/auth/signUp:
+    post:
+      tags: [Auth]
+      summary: Crea un usuario nuevo (rol USER por defecto)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, fullName, password, confirmPassword]
+              properties:
+                email:
+                  type: string
+                  format: email
+                fullName:
+                  type: string
+                password:
+                  type: string
+                confirmPassword:
+                  type: string
+                phoneNumber:
+                  type: string
+      responses:
+        '201':
+          description: Usuario creado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+                  accessToken:
+                    type: string
+        '400':
+          description: El usuario ya existe
+
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: Login con email + password
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+      responses:
+        '200':
+          description: Login exitoso
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+                  accessToken:
+                    type: string
+        '401':
+          description: Usuario no encontrado, inactivo o contraseña inválida
+        '403':
+          description: Cuenta bloqueada por un administrador
+
+  /api/auth/refresh:
+    get:
+      tags: [Auth]
+      summary: Renueva el access token usando la cookie refreshToken
+      security: []
+      responses:
+        '200':
+          description: Nuevo access token
+        '401':
+          description: Refresh token ausente, inválido, expirado o usuario inactivo/bloqueado
+
+  /api/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Invalida el refresh token y limpia la cookie
+      security: []
+      responses:
+        '200':
+          description: Logout exitoso
+
+  /api/auth/forgotPassword:
+    post:
+      tags: [Auth]
+      summary: Envía un email con link de reseteo de contraseña
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+      responses:
+        '200':
+          description: Si el email existe, se envió el link (respuesta uniforme por seguridad)
+
+  /api/auth/resetPassword:
+    post:
+      tags: [Auth]
+      summary: Cambia la contraseña usando el token recibido por email
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, newPassword, confirmNewPassword]
+              properties:
+                token:
+                  type: string
+                newPassword:
+                  type: string
+                confirmNewPassword:
+                  type: string
+      responses:
+        '200':
+          description: Contraseña actualizada
+        '400':
+          description: Token inválido, expirado o contraseñas no coinciden
+
+  /api/users:
+    get:
+      tags: [Users]
+      summary: Lista todos los usuarios
+      description: Requiere rol ADMIN.
+      responses:
+        '200':
+          description: Lista de usuarios
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+        '403':
+          description: No es admin
+
+  /api/users/{email}:
+    get:
+      tags: [Users]
+      summary: Obtiene un usuario por email
+      parameters:
+        - name: email
+          in: path
+          required: true
+          schema:
+            type: string
+            format: email
+      responses:
+        '200':
+          description: Usuario encontrado
+        '404':
+          description: No encontrado
+    delete:
+      tags: [Users]
+      summary: Baja lógica de un usuario (active = false)
+      description: Requiere rol ADMIN.
+      parameters:
+        - name: email
+          in: path
+          required: true
+          schema:
+            type: string
+            format: email
+      responses:
+        '200':
+          description: Usuario desactivado
+        '403':
+          description: No es admin
+        '404':
+          description: No encontrado
+
+  /api/users/update:
+    put:
+      tags: [Users]
+      summary: Actualiza el propio perfil (o cualquiera si es Admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+                fullName:
+                  type: string
+                phoneNumber:
+                  type: string
+                avatarUrl:
+                  type: string
+      responses:
+        '200':
+          description: Usuario actualizado
+        '403':
+          description: No tiene permiso para editar ese usuario
+        '404':
+          description: No encontrado
+
+  /api/users/{email}/block:
+    patch:
+      tags: [Users]
+      summary: Bloquea a un usuario (reversible)
+      description: >
+        Requiere rol ADMIN. Un usuario bloqueado no puede iniciar sesión ni
+        renovar su sesión, pero conserva su cuenta y sus datos - a diferencia
+        de la baja lógica de DELETE /api/users/{email}.
+      parameters:
+        - name: email
+          in: path
+          required: true
+          schema:
+            type: string
+            format: email
+      responses:
+        '200':
+          description: Usuario bloqueado
+        '400':
+          description: Un admin no puede bloquearse a sí mismo
+        '403':
+          description: No es admin
+        '404':
+          description: No encontrado
+
+  /api/users/{email}/unblock:
+    patch:
+      tags: [Users]
+      summary: Desbloquea a un usuario previamente bloqueado
+      description: Requiere rol ADMIN.
+      parameters:
+        - name: email
+          in: path
+          required: true
+          schema:
+            type: string
+            format: email
+      responses:
+        '200':
+          description: Usuario desbloqueado
+        '403':
+          description: No es admin
+        '404':
+          description: No encontrado
+
+  /api/listings:
+    get:
+      tags: [Listings]
+      summary: Lista/filtra publicaciones
+      security: []
+      parameters:
+        - name: propertyType
+          in: query
+          schema: { type: string }
+        - name: priceFrom
+          in: query
+          schema: { type: number }
+        - name: priceTo
+          in: query
+          schema: { type: number }
+        - name: ratingFrom
+          in: query
+          schema: { type: number }
+        - name: amenities
+          in: query
+          description: ids separados por coma
+          schema: { type: string }
+        - name: cityId
+          in: query
+          schema: { type: string }
+        - name: startDate
+          in: query
+          schema: { type: string, format: date-time }
+        - name: endDate
+          in: query
+          schema: { type: string, format: date-time }
+        - name: guests
+          in: query
+          schema: { type: integer }
+        - name: search
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, maximum: 100, default: 20 }
+      responses:
+        '200':
+          description: Publicaciones que matchean los filtros
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Listing'
+    post:
+      tags: [Listings]
+      summary: Crea una publicación
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                [
+                  title,
+                  description,
+                  address,
+                  pricePerNight,
+                  propertyType,
+                  rooms,
+                  bathrooms,
+                  beds,
+                  maxGuests,
+                  cityId,
+                  images,
+                  amenities,
+                ]
+              properties:
+                title: { type: string }
+                description: { type: string }
+                address: { type: string }
+                pricePerNight: { type: number }
+                propertyType: { type: string }
+                rooms: { type: integer }
+                bathrooms: { type: integer }
+                beds: { type: integer }
+                petFriendly: { type: boolean }
+                maxGuests: { type: integer }
+                cityId: { type: string }
+                images:
+                  type: array
+                  items: { type: string }
+                  minItems: 2
+                amenities:
+                  type: array
+                  items: { type: string }
+                  minItems: 1
+      responses:
+        '201':
+          description: Publicación creada
+
+  /api/listings/featured:
+    get:
+      tags: [Listings]
+      summary: Publicaciones destacadas (hasta 6)
+      security: []
+      responses:
+        '200':
+          description: Lista de publicaciones destacadas
+
+  /api/listings/myListings:
+    get:
+      tags: [Listings]
+      summary: Publicaciones del usuario autenticado
+      responses:
+        '200':
+          description: Lista de publicaciones propias
+
+  /api/listings/favorites:
+    get:
+      tags: [Listings]
+      summary: Publicaciones favoritas del usuario autenticado
+      responses:
+        '200':
+          description: Lista de favoritos
+    post:
+      tags: [Listings]
+      summary: Marca/desmarca una publicación como favorita (toggle)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [listingId]
+              properties:
+                listingId: { type: string }
+      responses:
+        '200':
+          description: Favorito alternado
+
+  /api/listings/{id}:
+    get:
+      tags: [Listings]
+      summary: Detalle de una publicación (con reviews, imágenes, amenities)
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Publicación encontrada
+        '404':
+          description: No encontrada
+    put:
+      tags: [Listings]
+      summary: Actualiza una publicación propia
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Publicación actualizada
+        '403':
+          description: No es el dueño
+    delete:
+      tags: [Listings]
+      summary: Elimina una publicación propia (si no tiene reservas activas)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Publicación eliminada
+        '403':
+          description: No es el dueño
+
+  /api/listings/bookings/{id}:
+    get:
+      tags: [Listings]
+      summary: Reservas activas/pendientes de una publicación (para el calendario)
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Reservas activas/pendientes
+
+  /api/bookings:
+    post:
+      tags: [Bookings]
+      summary: Crea una reserva y una preferencia de pago en MercadoPago
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [listingId, startDate, endDate]
+              properties:
+                listingId: { type: string }
+                startDate: { type: string, format: date-time }
+                endDate: { type: string, format: date-time }
+                guests: { type: integer }
+      responses:
+        '201':
+          description: Reserva creada, con el link de pago de MercadoPago
+        '400':
+          description: Fechas inválidas o publicación no disponible
+        '502':
+          description: Reserva creada pero MercadoPago no pudo generar el link de pago
+
+  /api/bookings/{bookingId}:
+    put:
+      tags: [Bookings]
+      summary: Actualiza fechas/huéspedes de una reserva PENDING propia
+      parameters:
+        - name: bookingId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [startDate, endDate]
+              properties:
+                startDate: { type: string, format: date-time }
+                endDate: { type: string, format: date-time }
+                guests: { type: integer }
+      responses:
+        '200':
+          description: Reserva actualizada
+        '400':
+          description: Fechas inválidas, solapadas, o la reserva no está PENDING
+        '403':
+          description: No es el dueño de la reserva
+        '404':
+          description: No encontrada
+    delete:
+      tags: [Bookings]
+      summary: Cancela una reserva propia
+      parameters:
+        - name: bookingId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Reserva cancelada
+        '400':
+          description: Ya cancelada o ya comenzó
+        '403':
+          description: No es el dueño de la reserva
+
+  /api/bookings/host:
+    get:
+      tags: [Bookings]
+      summary: Reservas recibidas en las publicaciones del usuario (como anfitrión)
+      responses:
+        '200':
+          description: Lista de reservas recibidas
+
+  /api/bookings/user/{userEmail}/count:
+    get:
+      tags: [Bookings]
+      summary: Cantidad total y próximas reservas de un usuario
+      description: Requiere ser el propio usuario o ADMIN.
+      parameters:
+        - name: userEmail
+          in: path
+          required: true
+          schema: { type: string, format: email }
+      responses:
+        '200':
+          description: Conteos
+        '403':
+          description: No tiene permiso
+
+  /api/bookings/user/{userEmail}:
+    get:
+      tags: [Bookings]
+      summary: Historial completo de reservas de un usuario
+      description: Requiere ser el propio usuario o ADMIN.
+      parameters:
+        - name: userEmail
+          in: path
+          required: true
+          schema: { type: string, format: email }
+      responses:
+        '200':
+          description: Historial de reservas
+        '403':
+          description: No tiene permiso
+
+  /api/reviews:
+    post:
+      tags: [Reviews]
+      summary: Crea o actualiza (si ya existe) la reseña del usuario para una publicación
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [listingId, rating, comment]
+              properties:
+                listingId: { type: string }
+                rating: { type: integer, minimum: 1, maximum: 5 }
+                comment: { type: string }
+      responses:
+        '201':
+          description: Reseña creada
+        '200':
+          description: Reseña existente actualizada
+        '403':
+          description: No tiene una reserva CONFIRMED completada para esa publicación
+
+  /api/reviews/{id}:
+    get:
+      tags: [Reviews]
+      summary: Obtiene una reseña puntual
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Reseña encontrada
+        '404':
+          description: No encontrada
+    put:
+      tags: [Reviews]
+      summary: Actualiza la propia reseña
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [rating, comment]
+              properties:
+                rating: { type: integer, minimum: 1, maximum: 5 }
+                comment: { type: string }
+      responses:
+        '200':
+          description: Reseña actualizada
+        '403':
+          description: No es el autor
+        '404':
+          description: No encontrada
+    delete:
+      tags: [Reviews]
+      summary: Elimina la propia reseña
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Reseña eliminada
+        '403':
+          description: No es el autor
+
+  /api/provinces:
+    get:
+      tags: [Provinces]
+      summary: Lista todas las provincias
+      description: Dato de referencia cargado por el seeder desde datos oficiales; solo lectura.
+      security: []
+      responses:
+        '200':
+          description: Lista de provincias
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Province'
+
+  /api/cities:
+    get:
+      tags: [Cities]
+      summary: Lista/busca ciudades
+      description: Dato de referencia cargado por el seeder; solo lectura.
+      security: []
+      parameters:
+        - name: search
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, maximum: 100, default: 25 }
+      responses:
+        '200':
+          description: Lista de ciudades
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/City'
+        '400':
+          description: limit fuera de rango (1-100)
+
+  /api/cities/popular:
+    get:
+      tags: [Cities]
+      summary: Top 4 ciudades con más publicaciones
+      security: []
+      responses:
+        '200':
+          description: Ciudades populares
+
+  /api/cities/province/{provinceId}:
+    get:
+      tags: [Cities]
+      summary: Ciudades de una provincia
+      security: []
+      parameters:
+        - name: provinceId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: search
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, maximum: 100, default: 20 }
+      responses:
+        '200':
+          description: Ciudades de la provincia
+
+  /api/amenities:
+    get:
+      tags: [Amenities]
+      summary: Lista todas las amenities disponibles
+      description: Dato de referencia; solo lectura, usado en el formulario de publicación.
+      security: []
+      responses:
+        '200':
+          description: Lista de amenities
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Amenity'
+
+  /api/files/imageUploadUrl:
+    get:
+      tags: [Files]
+      summary: Genera los parámetros firmados para subir una imagen directo a Cloudinary
+      security: []
+      responses:
+        '200':
+          description: Parámetros de firma para el upload
+
+  /api/mercadopago/webhook:
+    post:
+      tags: [MercadoPago]
+      summary: Notificación de MercadoPago cuando cambia el estado de un pago
+      description: >
+        La firma x-signature se valida con MERCADOPAGO_WEBHOOK_SECRET (si está
+        configurado). Siempre responde 200 salvo firma inválida, para que
+        MercadoPago no reintente indefinidamente.
+      security: []
+      responses:
+        '200':
+          description: Procesado (o ignorado si no aplica)
+        '401':
+          description: Firma inválida
+
+  /health:
+    get:
+      tags: []
+      summary: Health check
+      security: []
+      responses:
+        '200':
+          description: OK

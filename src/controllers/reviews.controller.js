@@ -83,6 +83,44 @@ export const getReviewById = async (req, res) => {
 };
 
 /**
+ * Updates a review (only the author can update it)
+ * @param {Object} req - The request object
+ * @param {Object} res - The response object
+ */
+export const updateReview = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { email } = req.user;
+
+    const review = await prisma.review.findUnique({ where: { id } });
+    if (!review) {
+      return res.status(404).json({ error: 'Review not found' });
+    }
+    if (review.userEmail !== email) {
+      return res
+        .status(403)
+        .json({ error: 'You can only update your own reviews' });
+    }
+
+    const { error, data } = reviewSchema
+      .pick({ rating: true, comment: true })
+      .safeParse(req.body);
+    if (error) {
+      return res.status(400).json({ error: error.message });
+    }
+
+    const updatedReview = await prisma.review.update({
+      where: { id },
+      data: { rating: data.rating, comment: data.comment },
+    });
+    return res.status(200).json(updatedReview);
+  } catch (error) {
+    console.error('Error updating review:', error);
+    res.status(500).json({ message: 'Error updating review' });
+  }
+};
+
+/**
  * Deletes a review (only the author can delete it)
  * @param {Object} req - The request object
  * @param {Object} res - The response object

@@ -2,6 +2,8 @@
 
 API REST expuesta bajo el prefijo `/api`. Formato de request/response: JSON (salvo donde se indique). Base URL en desarrollo: `http://localhost:3000`.
 
+**Documentación interactiva (Swagger UI)**: con el server corriendo, `http://localhost:3000/api-docs`. El spec OpenAPI fuente está en [`openapi.yaml`](./openapi.yaml).
+
 ## Autenticación
 
 La mayoría de las rutas protegidas esperan un **access token** JWT en el header:
@@ -12,7 +14,7 @@ Authorization: Bearer <accessToken>
 
 - El **access token** dura 15 minutos y se obtiene en `login`/`signUp`/`refresh`.
 - El **refresh token** dura 7 días y viaja en una cookie `httpOnly` (`refreshToken`), con `path=/api/auth`. Se usa automáticamente al pegarle a `GET /api/auth/refresh`.
-- Roles disponibles: `USER` (default al registrarse), `HOST`, `ADMIN`. Un usuario puede tener más de un rol (tabla `user_roles`).
+- Roles disponibles: `USER` (default al registrarse), `HOST`, `ADMIN`. Un usuario puede tener más de un rol (tabla `userRoles`).
 - Las rutas marcadas **🔒 Auth** requieren access token válido. Las marcadas **🔒 Admin** requieren además el rol `ADMIN` (middleware `requireAdmin`).
 
 Errores comunes: `401` (sin token / token inválido o expirado), `403` (autenticado pero sin permiso sobre el recurso), `404` (no encontrado), `400` (validación), `500` (error interno).
@@ -65,7 +67,11 @@ Errores comunes: `401` (sin token / token inválido o expirado), `403` (autentic
 | GET | `/` | 🔒 Admin | Lista todos los usuarios |
 | GET | `/:email` | 🔒 Auth | Obtiene un usuario por email |
 | PUT | `/update` | 🔒 Auth | Actualiza el propio perfil (o cualquiera si es Admin) |
+| PATCH | `/:email/block` | 🔒 Admin | Bloquea a un usuario (reversible: no puede loguearse hasta ser desbloqueado) |
+| PATCH | `/:email/unblock` | 🔒 Admin | Desbloquea a un usuario previamente bloqueado |
 | DELETE | `/:email` | 🔒 Admin | Baja lógica de un usuario (`active = false`) |
+
+Un usuario **bloqueado** (`blocked = true`) conserva su cuenta y sus datos pero no puede iniciar sesión ni renovar su token hasta que un admin lo desbloquee — es una sanción reversible, distinta de la baja lógica (`DELETE`, `active = false`) que da de baja la cuenta.
 
 **PUT `/api/users/update`**
 ```json
@@ -123,6 +129,7 @@ Reglas: `images` requiere mínimo 2 URLs, `amenities` mínimo 1. Las imágenes s
 | GET | `/user/:userEmail/count` | 🔒 Auth (propio o Admin) | Cantidad total y próximas reservas de un usuario |
 | GET | `/user/:userEmail` | 🔒 Auth (propio o Admin) | Historial completo de reservas de un usuario |
 | POST | `/` | 🔒 Auth | Crea una reserva y una preferencia de pago en MercadoPago |
+| PUT | `/:bookingId` | 🔒 Auth (dueño de la reserva) | Actualiza fechas/huéspedes de una reserva `PENDING` |
 | DELETE | `/:bookingId` | 🔒 Auth (dueño de la reserva) | Cancela una reserva |
 
 **POST `/api/bookings`**
@@ -138,6 +145,13 @@ Reglas: `images` requiere mínimo 2 URLs, `amenities` mínimo 1. Las imágenes s
 ```
 `startDate`/`endDate` deben ser fechas ISO-8601 completas. Si las fechas se solapan con otra reserva `PENDING`/`CONFIRMED` de la misma publicación, devuelve `400`. El precio total incluye un 10% de recargo de servicio. Si MercadoPago no puede generar el link de pago, la reserva igual queda creada (`PENDING`, sin `initPoint`) y responde `502`.
 
+**PUT `/api/bookings/:bookingId`**
+```json
+// body
+{ "startDate": "2027-01-12T00:00:00.000Z", "endDate": "2027-01-16T00:00:00.000Z", "guests": 3 }
+```
+Solo el dueño de la reserva puede editarla, y solo mientras esté `PENDING` (una vez `CONFIRMED` o `CANCELLED` no se puede modificar: hay que cancelar y crear una nueva). Recalcula `totalPrice` con las nuevas fechas y revalida solapamiento con otras reservas de la misma publicación.
+
 ---
 
 ## Reviews — `/api/reviews`
@@ -146,6 +160,7 @@ Reglas: `images` requiere mínimo 2 URLs, `amenities` mínimo 1. Las imágenes s
 |---|---|---|---|
 | POST | `/` | 🔒 Auth | Crea o actualiza (si ya existe) la reseña del usuario para una publicación |
 | GET | `/:id` | — | Obtiene una reseña puntual |
+| PUT | `/:id` | 🔒 Auth (autor) | Actualiza la propia reseña |
 | DELETE | `/:id` | 🔒 Auth (autor) | Elimina la propia reseña |
 
 **POST `/api/reviews`**
@@ -159,7 +174,7 @@ Solo se puede reseñar una publicación si el usuario tiene una reserva `CONFIRM
 
 ## Provincias — `/api/provinces` y Localidades — `/api/cities`
 
-Datos de referencia (cargados por el seeder), expuestos solo en lectura:
+Datos de referencia oficiales (API de Nación), cargados una vez por el seeder ([`prisma/seeders/seed.js`](../prisma/seeders/seed.js)) y expuestos solo en lectura — no son datos que un usuario cree o edite, por eso no tienen CRUD de escritura:
 
 | Método | Ruta | Auth | Descripción |
 |---|---|---|---|

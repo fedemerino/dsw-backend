@@ -11,14 +11,13 @@ Node.js + Express 5 · PostgreSQL + Prisma · JWT (access + refresh) con roles (
 ## Quick start
 
 ```bash
-npm install
-docker compose up -d          # levanta Postgres
-npx prisma migrate deploy
-npm run seed
-npm run dev                   # http://localhost:3000
+cp .env.example .env   # completar los valores reales (ver docs/instalacion.md)
+npm run setup           # instala deps, levanta Docker+Postgres, migra, seedea y levanta el server
 ```
 
-Instrucciones completas (variables de entorno, requisitos, troubleshooting) en [`docs/instalacion.md`](./docs/instalacion.md).
+Admin de prueba: `admin@reservar.com` / `123456789` (contraseña fija para desarrollo local, configurable con `SETUP_ADMIN_PASSWORD`).
+
+Paso a paso manual, requisitos previos (Docker, ngrok, MercadoPago, Cloudinary, Gmail) y detalle de cada variable de entorno en [`docs/instalacion.md`](./docs/instalacion.md).
 
 ## Documentación
 

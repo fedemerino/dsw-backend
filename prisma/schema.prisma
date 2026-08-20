@@ -42,7 +42,7 @@ model UserRole {
   user      User   @relation(fields: [userEmail], references: [email], onDelete: Cascade)
 
   @@id([userEmail, role])
-  @@map("user_roles")
+  @@map("userRoles")
 }
 
 model User {
@@ -52,6 +52,7 @@ model User {
   phoneNumber         String?
   avatarUrl           String?
   active              Boolean              @default(true)
+  blocked             Boolean              @default(false)
   createdAt           DateTime             @default(now())
   updatedAt           DateTime?            @updatedAt
   bookings            Booking[]

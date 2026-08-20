@@ -2,9 +2,9 @@ import { Router } from 'express';
 import { MercadoPagoService } from '../services/mercadopago.service.js';
 
 const router = Router();
+const mercadoPagoService = new MercadoPagoService();
 
 router.post('/webhook', async (req, res) => {
-  const mercadoPagoService = new MercadoPagoService();
   await mercadoPagoService.processWebhookRequest(req, res);
 });
 

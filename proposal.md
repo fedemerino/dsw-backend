@@ -39,7 +39,7 @@ Aplicación web que permite a usuarios publicar alojamientos para alquiler tempo
 | Req     | Detalle |
 |---------|---------|
 | CRUDs   | CRUD completo de todas las entidades necesarias (Usuarios, Publicaciones, Reservas, Reseñas, Favoritos, Imágenes) |
-| CUUs    | 1. Cancelar una reserva — Un huésped o anfitrión cancela una reserva existente; el sistema actualiza el estado y notifica a la otra parte<br>2. Reseñar un alojamiento — Un huésped que completó su estadía deja una calificación y comentario sobre el alojamiento para orientar a futuros huéspedes<br>3. Guardar un alojamiento en favoritos — Un huésped marca una publicación como favorita para encontrarla fácilmente en visitas futuras<br>4. Ver el historial de reservas — Un huésped consulta sus reservas pasadas y próximas para hacer seguimiento de sus estadías<br>5. Actualizar perfil de usuario — Un usuario modifica sus datos personales (nombre, foto, método de pago) para mantener su información al día |
+| CUUs    | 1. Cancelar una reserva — Un huésped o anfitrión cancela una reserva existente; el sistema actualiza el estado y notifica a la otra parte<br>2. Reseñar un alojamiento — Un huésped que completó su estadía deja una calificación y comentario sobre el alojamiento para orientar a futuros huéspedes<br>3. Guardar un alojamiento en favoritos — Un huésped marca una publicación como favorita para encontrarla fácilmente en visitas futuras<br>4. Ver el historial de reservas — Un huésped consulta sus reservas pasadas y próximas para hacer seguimiento de sus estadías<br>5. Actualizar perfil de usuario — Un usuario modifica sus datos personales (nombre, foto, teléfono) para mantener su información al día<br>6. Gestionar publicaciones propias — Un anfitrión visualiza, edita o elimina sus propias publicaciones desde un panel dedicado<br>7. Bloquear un usuario — Un administrador bloquea a un usuario que incumple las normas de la plataforma, impidiéndole iniciar sesión hasta ser desbloqueado |
 
 ---
 
@@ -54,5 +54,5 @@ Aplicación web que permite a usuarios publicar alojamientos para alquiler tempo
 
 ### Notas sobre cambios de alcance respecto a la propuesta original
 
-- **CRUD Métodos de Pago**: se eliminó como entidad de negocio propia. En su lugar, cada reserva se asocia directamente a una entidad `Payment` que se gestiona a través de la integración con MercadoPago (Checkout Pro + webhook de confirmación) — una solución más realista que un CRUD manual de métodos de pago.
-- **CRUD Provincias / CRUD Localidades**: acordado con el docente que quedan fuera del alcance de Aprobación Directa. Se mantienen como datos de referencia (seed) expuestos solo en modo lectura vía API, usados para geolocalizar las publicaciones y para los filtros de búsqueda.
+- **CRUD Métodos de Pago**: se eliminó como entidad de negocio propia. En su lugar, cada reserva se asocia directamente a una entidad `Payment` que se gestiona a través de la integración con MercadoPago (Checkout Pro + webhook de confirmación)
+- **CRUD Provincias / CRUD Localidades**: se mantienen como datos de referencia (seed) expuestos solo en modo lectura vía API, usados para geolocalizar las publicaciones y para los filtros de búsqueda.

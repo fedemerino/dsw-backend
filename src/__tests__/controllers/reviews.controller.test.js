@@ -2,6 +2,7 @@ import { PrismaClient } from '@prisma/client';
 import {
   createReview,
   getReviewById,
+  updateReview,
   deleteReview,
 } from '../../controllers/reviews.controller.js';
 
@@ -128,6 +129,103 @@ describe('getReviewById', () => {
     const res = mockRes();
 
     await getReviewById(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(500);
+  });
+});
+
+describe('updateReview', () => {
+  it('updates a review owned by the requester', async () => {
+    mockReviewFindUnique.mockResolvedValue({
+      id: 'review-1',
+      userEmail: 'user@example.com',
+    });
+    mockReviewUpdate.mockResolvedValue({
+      id: 'review-1',
+      rating: 4,
+      comment: 'Updated comment',
+    });
+
+    const req = {
+      params: { id: 'review-1' },
+      body: { rating: 4, comment: 'Updated comment' },
+      user: { email: 'user@example.com' },
+    };
+    const res = mockRes();
+
+    await updateReview(req, res);
+
+    expect(mockReviewUpdate).toHaveBeenCalledWith({
+      where: { id: 'review-1' },
+      data: { rating: 4, comment: 'Updated comment' },
+    });
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it('rejects updating someone else’s review', async () => {
+    mockReviewFindUnique.mockResolvedValue({
+      id: 'review-1',
+      userEmail: 'other@example.com',
+    });
+
+    const req = {
+      params: { id: 'review-1' },
+      body: { rating: 4, comment: 'Updated comment' },
+      user: { email: 'user@example.com' },
+    };
+    const res = mockRes();
+
+    await updateReview(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(mockReviewUpdate).not.toHaveBeenCalled();
+  });
+
+  it('returns 404 when the review does not exist', async () => {
+    mockReviewFindUnique.mockResolvedValue(null);
+
+    const req = {
+      params: { id: 'ghost' },
+      body: { rating: 4, comment: 'Updated comment' },
+      user: { email: 'user@example.com' },
+    };
+    const res = mockRes();
+
+    await updateReview(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(404);
+  });
+
+  it('rejects invalid input', async () => {
+    mockReviewFindUnique.mockResolvedValue({
+      id: 'review-1',
+      userEmail: 'user@example.com',
+    });
+
+    const req = {
+      params: { id: 'review-1' },
+      body: { rating: 10, comment: 'Updated comment' },
+      user: { email: 'user@example.com' },
+    };
+    const res = mockRes();
+
+    await updateReview(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(mockReviewUpdate).not.toHaveBeenCalled();
+  });
+
+  it('returns 500 on a database error', async () => {
+    mockReviewFindUnique.mockRejectedValue(new Error('db down'));
+
+    const req = {
+      params: { id: 'review-1' },
+      body: { rating: 4, comment: 'Updated comment' },
+      user: { email: 'user@example.com' },
+    };
+    const res = mockRes();
+
+    await updateReview(req, res);
 
     expect(res.status).toHaveBeenCalledWith(500);
   });
