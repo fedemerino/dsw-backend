@@ -95,7 +95,10 @@ export class MercadoPagoService {
 
     const xSignature = req.headers['x-signature'];
     const xRequestId = req.headers['x-request-id'];
-    const dataId = req.body?.data?.id ?? req.query['data.id'];
+    // MercadoPago's own reference implementation builds the manifest from
+    // the query string's data.id, not the JSON body - use that exclusively
+    // to match exactly what MP signed on their end.
+    const dataId = req.query['data.id'];
     if (!xSignature || !dataId) return false;
 
     const parts = xSignature.split(',');
@@ -107,7 +110,7 @@ export class MercadoPagoService {
     }
     if (!ts || !v1) return false;
 
-    const manifest = `id:${dataId};request-id:${xRequestId || ''};ts:${ts};`;
+    const manifest = `id:${dataId.toLowerCase()};request-id:${xRequestId || ''};ts:${ts};`;
     const expected = crypto
       .createHmac('sha256', secret)
       .update(manifest)

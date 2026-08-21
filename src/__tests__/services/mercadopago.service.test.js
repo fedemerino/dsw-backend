@@ -76,7 +76,7 @@ describe('MercadoPagoService.validateWebhookSignature', () => {
     const req = {
       headers: { 'x-signature': `ts=${ts},v1=${v1}`, 'x-request-id': 'req-1' },
       body: { data: { id: dataId } },
-      query: {},
+      query: { 'data.id': dataId },
     };
 
     expect(service.validateWebhookSignature(req)).toBe(true);
@@ -91,10 +91,51 @@ describe('MercadoPagoService.validateWebhookSignature', () => {
         'x-request-id': 'req-1',
       },
       body: { data: { id: '12345' } },
-      query: {},
+      query: { 'data.id': '12345' },
     };
 
     expect(service.validateWebhookSignature(req)).toBe(false);
+  });
+
+  it('builds the manifest from the query string data.id, not the body', () => {
+    // MercadoPago's own reference implementation signs using the query
+    // string's data.id - if a webhook ever carried a different value in
+    // the body, using the body would break validation.
+    process.env.MERCADOPAGO_WEBHOOK_SECRET = 'secret';
+    const service = new MercadoPagoService();
+    const ts = '1700000000';
+    const manifest = `id:12345;request-id:req-1;ts:${ts};`;
+    const v1 = crypto
+      .createHmac('sha256', 'secret')
+      .update(manifest)
+      .digest('hex');
+
+    const req = {
+      headers: { 'x-signature': `ts=${ts},v1=${v1}`, 'x-request-id': 'req-1' },
+      body: { data: { id: 'not-the-real-id' } },
+      query: { 'data.id': '12345' },
+    };
+
+    expect(service.validateWebhookSignature(req)).toBe(true);
+  });
+
+  it('lowercases the data id when building the manifest', () => {
+    process.env.MERCADOPAGO_WEBHOOK_SECRET = 'secret';
+    const service = new MercadoPagoService();
+    const ts = '1700000000';
+    const manifest = `id:abc123;request-id:req-1;ts:${ts};`;
+    const v1 = crypto
+      .createHmac('sha256', 'secret')
+      .update(manifest)
+      .digest('hex');
+
+    const req = {
+      headers: { 'x-signature': `ts=${ts},v1=${v1}`, 'x-request-id': 'req-1' },
+      body: {},
+      query: { 'data.id': 'ABC123' },
+    };
+
+    expect(service.validateWebhookSignature(req)).toBe(true);
   });
 });
 
