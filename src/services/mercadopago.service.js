@@ -147,15 +147,13 @@ export class MercadoPagoService {
    */
   async processPaymentWebhook(mpPaymentId, res) {
     const paymentClient = new Payment(this.client);
-    const raw = await paymentClient
-      .get({ id: mpPaymentId })
-      .catch((err) => {
-        console.error(
-          `MP webhook: failed to fetch payment ${mpPaymentId} from MercadoPago:`,
-          err?.message ?? err
-        );
-        return null;
-      });
+    const raw = await paymentClient.get({ id: mpPaymentId }).catch((err) => {
+      console.error(
+        `MP webhook: failed to fetch payment ${mpPaymentId} from MercadoPago:`,
+        err?.message ?? err
+      );
+      return null;
+    });
     const mpPayment = raw?.body ?? raw;
     if (!mpPayment || !mpPayment.external_reference) {
       console.warn(
