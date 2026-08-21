@@ -95,10 +95,7 @@ export class MercadoPagoService {
 
     const xSignature = req.headers['x-signature'];
     const xRequestId = req.headers['x-request-id'];
-    // MercadoPago's own reference implementation builds the manifest from
-    // the query string's data.id, not the JSON body - use that exclusively
-    // to match exactly what MP signed on their end.
-    const dataId = req.query['data.id'];
+    const dataId = req.body?.data?.id ?? req.query['data.id'];
     if (!xSignature || !dataId) return false;
 
     const parts = xSignature.split(',');
@@ -110,18 +107,12 @@ export class MercadoPagoService {
     }
     if (!ts || !v1) return false;
 
-    const manifest = `id:${dataId.toLowerCase()};request-id:${xRequestId || ''};ts:${ts};`;
+    const manifest = `id:${dataId};request-id:${xRequestId || ''};ts:${ts};`;
     const expected = crypto
       .createHmac('sha256', secret)
       .update(manifest)
       .digest('hex');
-    const matches = expected === v1;
-    if (!matches) {
-      console.warn(
-        `MP webhook signature mismatch: secret len=${secret.length} prefix=${secret.slice(0, 4)}... manifest="${manifest}" expected=${expected} received=${v1}`
-      );
-    }
-    return matches;
+    return expected === v1;
   }
 
   /**
@@ -130,17 +121,14 @@ export class MercadoPagoService {
    */
   async processWebhookRequest(req, res) {
     try {
-      const type = req.body?.type ?? req.query?.type;
-      const dataId = req.body?.data?.id ?? req.query?.['data.id'];
-      console.log(`MP webhook received: type=${type} dataId=${dataId}`);
-
       if (!this.validateWebhookSignature(req)) {
-        console.warn('MP webhook rejected: invalid signature');
         return res.status(401).json({ error: 'Invalid signature' });
       }
 
+      const type = req.body?.type ?? req.query?.type;
+      const dataId = req.body?.data?.id ?? req.query?.['data.id'];
+
       if (type !== 'payment' || !dataId) {
-        console.log(`MP webhook ignored: type=${type} is not "payment"`);
         return res.status(200).json({ ok: true });
       }
 
@@ -156,18 +144,9 @@ export class MercadoPagoService {
    */
   async processPaymentWebhook(mpPaymentId, res) {
     const paymentClient = new Payment(this.client);
-    const raw = await paymentClient.get({ id: mpPaymentId }).catch((err) => {
-      console.error(
-        `MP webhook: failed to fetch payment ${mpPaymentId} from MercadoPago:`,
-        err?.message ?? err
-      );
-      return null;
-    });
+    const raw = await paymentClient.get({ id: mpPaymentId }).catch(() => null);
     const mpPayment = raw?.body ?? raw;
     if (!mpPayment || !mpPayment.external_reference) {
-      console.warn(
-        `MP webhook: payment ${mpPaymentId} has no data or no external_reference, ignoring. mpPayment=${JSON.stringify(mpPayment)}`
-      );
       return res.status(200).json({ ok: true });
     }
 
@@ -179,29 +158,15 @@ export class MercadoPagoService {
       cancelled: 'REJECTED',
     };
     const status = statusMap[mpPayment.status] ?? 'PENDING';
-    console.log(
-      `MP webhook: payment ${mpPaymentId} (external_reference=${dbPaymentId}) mpStatus=${mpPayment.status} -> ${status}`
-    );
 
-    const updated = await this.prisma.payment
-      .update({
-        where: { id: dbPaymentId },
-        data: {
-          status,
-          paymentId: String(mpPayment.id),
-        },
-        select: { bookingId: true },
-      })
-      .catch((err) => {
-        console.error(
-          `MP webhook: failed to update Payment ${dbPaymentId} in our DB:`,
-          err?.message ?? err
-        );
-        throw err;
-      });
-    console.log(
-      `MP webhook: updated Payment ${dbPaymentId}, bookingId=${updated?.bookingId}`
-    );
+    const updated = await this.prisma.payment.update({
+      where: { id: dbPaymentId },
+      data: {
+        status,
+        paymentId: String(mpPayment.id),
+      },
+      select: { bookingId: true },
+    });
 
     if (updated?.bookingId) {
       if (status === 'APPROVED') {
