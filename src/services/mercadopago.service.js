@@ -1,10 +1,11 @@
-import crypto from 'crypto';
 import { PrismaClient } from '@prisma/client';
 import {
   MercadoPagoConfig,
   Payment,
   Preference,
   PaymentRefund,
+  WebhookSignatureValidator,
+  InvalidWebhookSignatureError,
 } from 'mercadopago';
 import { MailService } from './mail.service.js';
 
@@ -91,28 +92,26 @@ export class MercadoPagoService {
    */
   validateWebhookSignature(req) {
     const secret = process.env.MERCADOPAGO_WEBHOOK_SECRET;
+    console.log('Validating webhook signature with secret:', secret);
     if (!secret) return true;
 
-    const xSignature = req.headers['x-signature'];
-    const xRequestId = req.headers['x-request-id'];
-    const dataId = req.body?.data?.id ?? req.query['data.id'];
-    if (!xSignature || !dataId) return false;
-
-    const parts = xSignature.split(',');
-    let ts, v1;
-    for (const part of parts) {
-      const [key, value] = part.split('=').map((s) => s.trim());
-      if (key === 'ts') ts = value;
-      else if (key === 'v1') v1 = value;
+    try {
+      WebhookSignatureValidator.validate({
+        xSignature: req.headers['x-signature'],
+        xRequestId: req.headers['x-request-id'],
+        dataId: req.query['data.id'],
+        secret,
+      });
+      return true;
+    } catch (err) {
+      if (err instanceof InvalidWebhookSignatureError) {
+        console.warn(
+          `MP webhook signature invalid: reason=${err.reason} requestId=${err.requestId} ts=${err.timestamp}`
+        );
+        return false;
+      }
+      throw err;
     }
-    if (!ts || !v1) return false;
-
-    const manifest = `id:${dataId};request-id:${xRequestId || ''};ts:${ts};`;
-    const expected = crypto
-      .createHmac('sha256', secret)
-      .update(manifest)
-      .digest('hex');
-    return expected === v1;
   }
 
   /**

@@ -10,16 +10,23 @@ const mockPreferenceCreate = jest.fn();
 const mockRefundTotal = jest.fn();
 const mockSendPaymentConfirmedEmail = jest.fn();
 
-jest.mock('mercadopago', () => ({
-  MercadoPagoConfig: jest.fn().mockImplementation(() => ({})),
-  Preference: jest
-    .fn()
-    .mockImplementation(() => ({ create: mockPreferenceCreate })),
-  Payment: jest.fn().mockImplementation(() => ({ get: mockPaymentGet })),
-  PaymentRefund: jest
-    .fn()
-    .mockImplementation(() => ({ total: mockRefundTotal })),
-}));
+jest.mock('mercadopago', () => {
+  // Signature validation is pure/stateless (no network calls), so keep the
+  // real implementation - only the network-calling classes get mocked.
+  const actual = jest.requireActual('mercadopago');
+  return {
+    MercadoPagoConfig: jest.fn().mockImplementation(() => ({})),
+    Preference: jest
+      .fn()
+      .mockImplementation(() => ({ create: mockPreferenceCreate })),
+    Payment: jest.fn().mockImplementation(() => ({ get: mockPaymentGet })),
+    PaymentRefund: jest
+      .fn()
+      .mockImplementation(() => ({ total: mockRefundTotal })),
+    WebhookSignatureValidator: actual.WebhookSignatureValidator,
+    InvalidWebhookSignatureError: actual.InvalidWebhookSignatureError,
+  };
+});
 
 jest.mock('@prisma/client', () => ({
   PrismaClient: jest.fn().mockImplementation(() => ({
@@ -119,11 +126,11 @@ describe('MercadoPagoService.validateWebhookSignature', () => {
     expect(service.validateWebhookSignature(req)).toBe(true);
   });
 
-  it('lowercases the data id when building the manifest', () => {
+  it('preserves the data id case when building the manifest (matches the official SDK validator)', () => {
     process.env.MERCADOPAGO_WEBHOOK_SECRET = 'secret';
     const service = new MercadoPagoService();
     const ts = '1700000000';
-    const manifest = `id:abc123;request-id:req-1;ts:${ts};`;
+    const manifest = `id:ABC123;request-id:req-1;ts:${ts};`;
     const v1 = crypto
       .createHmac('sha256', 'secret')
       .update(manifest)
