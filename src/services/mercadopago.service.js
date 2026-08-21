@@ -112,7 +112,13 @@ export class MercadoPagoService {
       .createHmac('sha256', secret)
       .update(manifest)
       .digest('hex');
-    return expected === v1;
+    const matches = expected === v1;
+    if (!matches) {
+      console.warn(
+        `MP webhook signature mismatch: secret len=${secret.length} prefix=${secret.slice(0, 4)}... manifest="${manifest}" expected=${expected} received=${v1}`
+      );
+    }
+    return matches;
   }
 
   /**
