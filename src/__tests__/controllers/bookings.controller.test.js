@@ -461,7 +461,7 @@ describe('cancelBooking', () => {
     expect(res.status).toHaveBeenCalledWith(200);
   });
 
-  it('returns 502 and does not cancel when the refund fails', async () => {
+  it('returns 422 and does not cancel when the refund fails', async () => {
     bookingMock.findUnique.mockResolvedValue({
       id: 'b1',
       userEmail: 'guest@example.com',
@@ -484,7 +484,7 @@ describe('cancelBooking', () => {
     await cancelBooking(req, res);
 
     expect(bookingMock.update).not.toHaveBeenCalled();
-    expect(res.status).toHaveBeenCalledWith(502);
+    expect(res.status).toHaveBeenCalledWith(422);
   });
 
   it('logs loudly and returns 500 if the DB write fails after a successful refund', async () => {
@@ -728,7 +728,7 @@ describe('createBooking', () => {
     );
   });
 
-  it('returns 502 when MercadoPago fails to create the preference', async () => {
+  it('returns 422 when MercadoPago fails to create the preference', async () => {
     bookingMock.findMany.mockResolvedValue([]);
     listingMock.findFirst.mockResolvedValue({
       id: 'listing-1',
@@ -750,7 +750,7 @@ describe('createBooking', () => {
 
     await createBooking({ ...baseReq }, res);
 
-    expect(res.status).toHaveBeenCalledWith(502);
+    expect(res.status).toHaveBeenCalledWith(422);
   });
 
   it('returns 500 on an unexpected error', async () => {

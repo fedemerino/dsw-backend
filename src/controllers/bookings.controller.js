@@ -194,7 +194,7 @@ export const cancelBooking = async (req, res) => {
           console.error('MercadoPago error code:', refundError.error);
         if (refundError?.causes?.length)
           console.error('MercadoPago causes:', refundError.causes);
-        return res.status(502).json({
+        return res.status(422).json({
           message:
             'No se pudo procesar el reembolso. La reserva no fue cancelada.',
         });
@@ -634,7 +634,7 @@ export const createBooking = async (req, res) => {
         console.error('MercadoPago error code:', mpError.error);
       if (mpError?.causes?.length)
         console.error('MercadoPago causes:', mpError.causes);
-      return res.status(502).json({
+      return res.status(422).json({
         message:
           'Booking created but payment link could not be generated. Please try again or contact support.',
         booking,

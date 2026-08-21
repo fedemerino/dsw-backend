@@ -121,14 +121,17 @@ export class MercadoPagoService {
    */
   async processWebhookRequest(req, res) {
     try {
+      const type = req.body?.type ?? req.query?.type;
+      const dataId = req.body?.data?.id ?? req.query?.['data.id'];
+      console.log(`MP webhook received: type=${type} dataId=${dataId}`);
+
       if (!this.validateWebhookSignature(req)) {
+        console.warn('MP webhook rejected: invalid signature');
         return res.status(401).json({ error: 'Invalid signature' });
       }
 
-      const type = req.body?.type ?? req.query?.type;
-      const dataId = req.body?.data?.id ?? req.query?.['data.id'];
-
       if (type !== 'payment' || !dataId) {
+        console.log(`MP webhook ignored: type=${type} is not "payment"`);
         return res.status(200).json({ ok: true });
       }
 
@@ -144,9 +147,20 @@ export class MercadoPagoService {
    */
   async processPaymentWebhook(mpPaymentId, res) {
     const paymentClient = new Payment(this.client);
-    const raw = await paymentClient.get({ id: mpPaymentId }).catch(() => null);
+    const raw = await paymentClient
+      .get({ id: mpPaymentId })
+      .catch((err) => {
+        console.error(
+          `MP webhook: failed to fetch payment ${mpPaymentId} from MercadoPago:`,
+          err?.message ?? err
+        );
+        return null;
+      });
     const mpPayment = raw?.body ?? raw;
     if (!mpPayment || !mpPayment.external_reference) {
+      console.warn(
+        `MP webhook: payment ${mpPaymentId} has no data or no external_reference, ignoring. mpPayment=${JSON.stringify(mpPayment)}`
+      );
       return res.status(200).json({ ok: true });
     }
 
@@ -158,15 +172,29 @@ export class MercadoPagoService {
       cancelled: 'REJECTED',
     };
     const status = statusMap[mpPayment.status] ?? 'PENDING';
+    console.log(
+      `MP webhook: payment ${mpPaymentId} (external_reference=${dbPaymentId}) mpStatus=${mpPayment.status} -> ${status}`
+    );
 
-    const updated = await this.prisma.payment.update({
-      where: { id: dbPaymentId },
-      data: {
-        status,
-        paymentId: String(mpPayment.id),
-      },
-      select: { bookingId: true },
-    });
+    const updated = await this.prisma.payment
+      .update({
+        where: { id: dbPaymentId },
+        data: {
+          status,
+          paymentId: String(mpPayment.id),
+        },
+        select: { bookingId: true },
+      })
+      .catch((err) => {
+        console.error(
+          `MP webhook: failed to update Payment ${dbPaymentId} in our DB:`,
+          err?.message ?? err
+        );
+        throw err;
+      });
+    console.log(
+      `MP webhook: updated Payment ${dbPaymentId}, bookingId=${updated?.bookingId}`
+    );
 
     if (updated?.bookingId) {
       if (status === 'APPROVED') {
